@@ -14,6 +14,7 @@ class SignUpUseCase {
     required String lastName,
     required DateTime birthDate,
     String? photoUrl,
+    String? bio,
   }) {
     return _repository.signUp(
       username: username,
@@ -23,6 +24,7 @@ class SignUpUseCase {
       lastName: lastName,
       birthDate: birthDate,
       photoUrl: photoUrl,
+      bio: bio,
     );
   }
 }

@@ -58,7 +58,7 @@ const ChatMessageEntitySchema = CollectionSchema(
       id: -635287409172016016,
       name: r'messageId',
       unique: true,
-      replace: false,
+      replace: true,
       properties: [
         IndexPropertySchema(
           name: r'messageId',

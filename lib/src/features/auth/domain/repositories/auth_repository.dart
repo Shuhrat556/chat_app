@@ -14,6 +14,7 @@ abstract class AuthRepository {
     required String lastName,
     required DateTime birthDate,
     String? photoUrl,
+    String? bio,
   });
 
   /// Sends OTP to the given phone number (E.164 format, e.g. +992XXXXXXXXX).

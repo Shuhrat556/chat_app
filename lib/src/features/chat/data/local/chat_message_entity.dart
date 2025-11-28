@@ -17,7 +17,7 @@ class ChatMessageEntity {
 
   Id id = Isar.autoIncrement;
 
-  @Index(unique: true)
+  @Index(unique: true, replace: true)
   late String messageId;
 
   @Index(composite: [CompositeIndex('createdAt')])
@@ -45,4 +45,5 @@ class ChatMessageEntity {
         text: message.text,
         createdAt: message.createdAt,
       );
+      
 }

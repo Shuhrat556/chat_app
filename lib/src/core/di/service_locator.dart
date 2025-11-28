@@ -18,18 +18,20 @@ import 'package:chat_app/src/features/chat/domain/usecases/send_message_usecase.
 import 'package:chat_app/src/features/chat/domain/usecases/watch_messages_usecase.dart';
 import 'package:chat_app/src/features/chat/presentation/cubit/chat_cubit.dart';
 import 'package:chat_app/src/features/home/presentation/cubit/users_cubit.dart';
+import 'package:chat_app/src/core/notifications/token_sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get_it/get_it.dart';
 import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
 
 final sl = GetIt.instance;
 
 Future<void> configureDependencies() async {
+  final dir = await getApplicationDocumentsDirectory();
   final isar = await Isar.open(
-    [
-      ChatMessageEntitySchema,
-    ],
+    [ChatMessageEntitySchema],
+    directory: dir.path,
     inspector: false,
   );
 
@@ -44,10 +46,8 @@ Future<void> configureDependencies() async {
       () => UserRemoteDataSource(sl()),
     )
     ..registerLazySingleton<AuthRepository>(
-      () => AuthRepositoryImpl(
-        authDataSource: sl(),
-        userRemoteDataSource: sl(),
-      ),
+      () =>
+          AuthRepositoryImpl(authDataSource: sl(), userRemoteDataSource: sl()),
     )
     ..registerLazySingleton<SignInUseCase>(() => SignInUseCase(sl()))
     ..registerLazySingleton<SignUpUseCase>(() => SignUpUseCase(sl()))
@@ -61,6 +61,9 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<VerifyPhoneOtpUseCase>(
       () => VerifyPhoneOtpUseCase(sl()),
     )
+    ..registerLazySingleton<TokenSyncService>(
+      () => TokenSyncService(sl(), sl()),
+    )
     ..registerFactory<AuthBloc>(
       () => AuthBloc(
         signInUseCase: sl(),
@@ -69,6 +72,7 @@ Future<void> configureDependencies() async {
         observeAuthStateUseCase: sl(),
         sendPhoneOtpUseCase: sl(),
         verifyPhoneOtpUseCase: sl(),
+        tokenSyncService: sl(),
       ),
     )
     ..registerLazySingleton<ChatRemoteDataSource>(
@@ -87,9 +91,7 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<WatchMessagesUseCase>(
       () => WatchMessagesUseCase(sl()),
     )
-    ..registerLazySingleton<SendMessageUseCase>(
-      () => SendMessageUseCase(sl()),
-    )
+    ..registerLazySingleton<SendMessageUseCase>(() => SendMessageUseCase(sl()))
     ..registerFactory<ChatCubit>(
       () => ChatCubit(
         watchMessagesUseCase: sl(),
@@ -97,7 +99,5 @@ Future<void> configureDependencies() async {
         firebaseAuth: sl(),
       ),
     )
-    ..registerFactory<UsersCubit>(
-      () => UsersCubit(sl()),
-    );
+    ..registerFactory<UsersCubit>(() => UsersCubit(sl()));
 }

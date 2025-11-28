@@ -28,10 +28,20 @@ class UserRemoteDataSource {
   }
 
   Future<void> saveUser(AppUserModel user) {
-    return _firestore.collection(_userCollection).doc(user.id).set(
-          user.toMap(),
-          SetOptions(merge: true),
-        );
+    return _firestore
+        .collection(_userCollection)
+        .doc(user.id)
+        .set(user.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> saveFcmToken({
+    required String userId,
+    required String? fcmToken,
+  }) {
+    return _firestore.collection(_userCollection).doc(userId).set({
+      'fcmToken': fcmToken,
+      'fcmUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<AppUserModel?> fetchUser(String userId) async {

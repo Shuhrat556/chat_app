@@ -10,6 +10,7 @@ class AppUserModel extends AppUser {
     super.firstName,
     super.lastName,
     super.birthDate,
+    super.bio,
     super.photoUrl,
     super.fcmToken,
     super.createdAt,
@@ -23,6 +24,7 @@ class AppUserModel extends AppUser {
         'firstName': firstName,
         'lastName': lastName,
         'birthDate': birthDate?.millisecondsSinceEpoch,
+        'bio': bio,
         'photoUrl': photoUrl,
         'fcmToken': fcmToken,
         'createdAt': createdAt?.millisecondsSinceEpoch,
@@ -43,6 +45,7 @@ class AppUserModel extends AppUser {
       birthDate: (data['birthDate'] as int?) != null
           ? DateTime.fromMillisecondsSinceEpoch(data['birthDate'] as int)
           : null,
+      bio: data['bio'] as String?,
       photoUrl: data['photoUrl'] as String?,
       fcmToken: data['fcmToken'] as String?,
       createdAt: (data['createdAt'] as int?) != null
@@ -59,6 +62,7 @@ class AppUserModel extends AppUser {
         firstName: user.displayName,
         lastName: null,
         birthDate: null,
+        bio: null,
         photoUrl: user.photoURL,
         fcmToken: null,
         createdAt: user.metadata.creationTime,

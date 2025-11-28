@@ -8,6 +8,7 @@ class AppUser extends Equatable {
     this.firstName,
     this.lastName,
     this.birthDate,
+    this.bio,
     this.photoUrl,
     this.fcmToken,
     this.createdAt,
@@ -20,6 +21,7 @@ class AppUser extends Equatable {
   final String? firstName;
   final String? lastName;
   final DateTime? birthDate;
+  final String? bio;
   final String? photoUrl;
   final String? fcmToken;
   final DateTime? createdAt;
@@ -33,6 +35,7 @@ class AppUser extends Equatable {
         firstName,
         lastName,
         birthDate,
+        bio,
         photoUrl,
         fcmToken,
         createdAt,

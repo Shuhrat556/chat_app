@@ -20,7 +20,10 @@ class AuthRepositoryImpl implements AuthRepository {
     return _authDataSource.authStateChanges().asyncMap((user) async {
       if (user == null) return null;
       final remote = await _userRemoteDataSource.fetchUser(user.uid);
-      return remote ?? AppUserModel.fromFirebaseUser(user);
+      if (remote != null) return remote;
+      final fallback = AppUserModel.fromFirebaseUser(user);
+      await _userRemoteDataSource.saveUser(fallback);
+      return fallback;
     });
   }
 
@@ -43,7 +46,11 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     final remote = await _userRemoteDataSource.fetchUser(uid);
-    return remote ?? AppUserModel.fromFirebaseUser(credential.user!);
+    if (remote != null) return remote;
+
+    final userModel = AppUserModel.fromFirebaseUser(credential.user!);
+    await _userRemoteDataSource.saveUser(userModel);
+    return userModel;
   }
 
   @override
@@ -55,6 +62,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String lastName,
     required DateTime birthDate,
     String? photoUrl,
+    String? bio,
   }) async {
     final normalizedUsername = username.trim();
 
@@ -93,6 +101,7 @@ class AuthRepositoryImpl implements AuthRepository {
       firstName: firstName,
       lastName: lastName,
       birthDate: birthDate,
+      bio: bio,
       photoUrl: photoUrl ?? firebaseUser.photoURL,
       fcmToken: null,
       createdAt: DateTime.now(),

@@ -8,6 +8,7 @@ import 'package:chat_app/src/features/auth/domain/usecases/sign_out_usecase.dart
 import 'package:chat_app/src/features/auth/domain/usecases/sign_up_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/send_phone_otp_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/verify_phone_otp_usecase.dart';
+import 'package:chat_app/src/core/notifications/token_sync_service.dart';
 import 'package:equatable/equatable.dart';
 
 part 'auth_event.dart';
@@ -21,13 +22,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required ObserveAuthStateUseCase observeAuthStateUseCase,
     required SendPhoneOtpUseCase sendPhoneOtpUseCase,
     required VerifyPhoneOtpUseCase verifyPhoneOtpUseCase,
-  })  : _signInUseCase = signInUseCase,
-        _signUpUseCase = signUpUseCase,
-        _signOutUseCase = signOutUseCase,
-        _observeAuthStateUseCase = observeAuthStateUseCase,
-        _sendPhoneOtpUseCase = sendPhoneOtpUseCase,
-        _verifyPhoneOtpUseCase = verifyPhoneOtpUseCase,
-        super(const AuthState()) {
+    required TokenSyncService tokenSyncService,
+  }) : _signInUseCase = signInUseCase,
+       _signUpUseCase = signUpUseCase,
+       _signOutUseCase = signOutUseCase,
+       _observeAuthStateUseCase = observeAuthStateUseCase,
+       _sendPhoneOtpUseCase = sendPhoneOtpUseCase,
+       _verifyPhoneOtpUseCase = verifyPhoneOtpUseCase,
+       _tokenSyncService = tokenSyncService,
+       super(const AuthState()) {
     on<AuthStarted>(_onStarted);
     on<AuthStatusChanged>(_onStatusChanged);
     on<SignInRequested>(_onSignIn);
@@ -43,6 +46,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final ObserveAuthStateUseCase _observeAuthStateUseCase;
   final SendPhoneOtpUseCase _sendPhoneOtpUseCase;
   final VerifyPhoneOtpUseCase _verifyPhoneOtpUseCase;
+  final TokenSyncService _tokenSyncService;
 
   StreamSubscription<AppUser?>? _authSub;
 
@@ -53,10 +57,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  void _onStatusChanged(
-    AuthStatusChanged event,
-    Emitter<AuthState> emit,
-  ) {
+  void _onStatusChanged(AuthStatusChanged event, Emitter<AuthState> emit) {
     final user = event.user;
     if (user == null) {
       emit(state.copyWith(status: AuthStatus.unauthenticated, user: null));
@@ -65,31 +66,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  Future<void> _onSignIn(
-    SignInRequested event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<void> _onSignIn(SignInRequested event, Emitter<AuthState> emit) async {
     emit(state.copyWith(status: AuthStatus.loading, message: null));
     try {
       final user = await _signInUseCase(
         email: event.email,
         password: event.password,
       );
+      await _tokenSyncService.syncCurrentUserToken();
       emit(state.copyWith(status: AuthStatus.authenticated, user: user));
     } catch (e) {
-      emit(
-        state.copyWith(
-          status: AuthStatus.failure,
-          message: e.toString(),
-        ),
-      );
+      emit(state.copyWith(status: AuthStatus.failure, message: e.toString()));
     }
   }
 
-  Future<void> _onSignUp(
-    SignUpRequested event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<void> _onSignUp(SignUpRequested event, Emitter<AuthState> emit) async {
     emit(state.copyWith(status: AuthStatus.loading, message: null));
     try {
       final user = await _signUpUseCase(
@@ -100,15 +91,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         lastName: event.lastName,
         birthDate: event.birthDate,
         photoUrl: event.photoUrl,
+        bio: event.bio,
       );
+      await _tokenSyncService.syncCurrentUserToken();
       emit(state.copyWith(status: AuthStatus.authenticated, user: user));
     } catch (e) {
-      emit(
-        state.copyWith(
-          status: AuthStatus.failure,
-          message: e.toString(),
-        ),
-      );
+      emit(state.copyWith(status: AuthStatus.failure, message: e.toString()));
     }
   }
 
@@ -124,7 +112,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     PhoneOtpRequested event,
     Emitter<AuthState> emit,
   ) async {
-    emit(state.copyWith(status: AuthStatus.loading, message: null, otpSent: false));
+    emit(
+      state.copyWith(status: AuthStatus.loading, message: null, otpSent: false),
+    );
     try {
       final verificationId = await _sendPhoneOtpUseCase(
         phoneNumber: event.phoneNumber,
@@ -159,6 +149,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         smsCode: event.smsCode,
         username: event.username,
       );
+      await _tokenSyncService.syncCurrentUserToken();
       emit(
         state.copyWith(
           status: AuthStatus.authenticated,
@@ -168,12 +159,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ),
       );
     } catch (e) {
-      emit(
-        state.copyWith(
-          status: AuthStatus.failure,
-          message: e.toString(),
-        ),
-      );
+      emit(state.copyWith(status: AuthStatus.failure, message: e.toString()));
     }
   }
 

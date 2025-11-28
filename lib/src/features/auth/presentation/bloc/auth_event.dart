@@ -39,6 +39,7 @@ class SignUpRequested extends AuthEvent {
     required this.lastName,
     required this.birthDate,
     this.photoUrl,
+    this.bio,
   });
 
   final String username;
@@ -48,9 +49,11 @@ class SignUpRequested extends AuthEvent {
   final String lastName;
   final DateTime birthDate;
   final String? photoUrl;
+  final String? bio;
 
   @override
-  List<Object?> get props => [username, email, password, firstName, lastName, birthDate, photoUrl];
+  List<Object?> get props =>
+      [username, email, password, firstName, lastName, birthDate, photoUrl, bio];
 }
 
 class SignOutRequested extends AuthEvent {
