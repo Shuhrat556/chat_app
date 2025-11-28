@@ -1,0 +1,28 @@
+import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
+import 'package:chat_app/src/features/auth/domain/repositories/auth_repository.dart';
+
+class SignUpUseCase {
+  SignUpUseCase(this._repository);
+
+  final AuthRepository _repository;
+
+  Future<AppUser> call({
+    required String username,
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    required DateTime birthDate,
+    String? photoUrl,
+  }) {
+    return _repository.signUp(
+      username: username,
+      email: email,
+      password: password,
+      firstName: firstName,
+      lastName: lastName,
+      birthDate: birthDate,
+      photoUrl: photoUrl,
+    );
+  }
+}

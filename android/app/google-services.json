@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "379129318878",
+    "project_id": "chat-app-9afab",
+    "storage_bucket": "chat-app-9afab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:379129318878:android:c7a4a5562aaab7ed29614f",
+        "android_client_info": {
+          "package_name": "com.shuhrat.chat_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyTea4ud-8dJFPR1hugk73BjxgqUQjBcI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
