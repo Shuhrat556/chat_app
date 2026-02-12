@@ -28,7 +28,8 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
+  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -39,5 +40,97 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    # Apple Silicon simulator builds:
+    # Exclude x86_64 to avoid gRPC/BoringSSL x86_64 simulator compiler issues
+    # on newer Xcode toolchains.
+    target.build_configurations.each do |config|
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'i386 x86_64'
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+
+    # Xcode/clang compatibility fix for BoringSSL-GRPC:
+    # Remove invalid '-GCC_WARN_INHIBIT_ALL_WARNINGS' flag that can appear in
+    # per-file COMPILER_FLAGS and fail simulator builds with:
+    # "unsupported option '-G' for target x86_64-apple-ios...-simulator".
+    if target.name == 'BoringSSL-GRPC'
+      target.source_build_phase.files.each do |file|
+        next unless file.settings && file.settings['COMPILER_FLAGS']
+
+        flags = file.settings['COMPILER_FLAGS'].split
+        flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+        file.settings['COMPILER_FLAGS'] = flags.join(' ')
+      end
+    end
+
+  end
+
+  # Xcode 16.x toolchain compatibility fix for gRPC 1.62.x used by
+  # FirebaseFirestore 10.25.0.
+  grpc_basic_seq_headers = [
+    File.join(
+      installer.sandbox.root.to_s,
+      'gRPC-Core',
+      'src',
+      'core',
+      'lib',
+      'promise',
+      'detail',
+      'basic_seq.h'
+    ),
+    File.join(
+      installer.sandbox.root.to_s,
+      'gRPC-C++',
+      'src',
+      'core',
+      'lib',
+      'promise',
+      'detail',
+      'basic_seq.h'
+    )
+  ]
+  grpc_basic_seq_headers.each do |header_path|
+    next unless File.exist?(header_path)
+
+    content = File.read(header_path)
+    patched = content.gsub('Traits::template CallSeqFactory', 'Traits::CallSeqFactory')
+    next if patched == content
+
+    File.chmod(0o644, header_path)
+    File.write(header_path, patched)
+  end
+
+  # FlutterFire headers may import the umbrella <Firebase/Firebase.h>, which
+  # can fail module precompilation with newer Xcode toolchains.
+  {
+    'firebase_auth' => '#import <FirebaseAuth/FirebaseAuth.h>',
+    'firebase_database' => '#import <FirebaseDatabase/FirebaseDatabase.h>',
+    'firebase_messaging' => '#import <FirebaseMessaging/FirebaseMessaging.h>'
+  }.each do |plugin_name, replacement|
+    pattern = File.expand_path("~/.pub-cache/hosted/pub.dev/#{plugin_name}-*/ios/Classes/**/*.{h,m,mm}")
+    Dir.glob(pattern).each do |source_path|
+      next unless File.file?(source_path)
+
+      content = File.read(source_path)
+      patched = content
+
+      if patched.include?('#import <Firebase/Firebase.h>')
+        patched = patched.gsub('#import <Firebase/Firebase.h>', replacement)
+      end
+
+      if plugin_name == 'firebase_messaging' &&
+         patched.include?('#import <FirebaseMessaging/FirebaseMessaging.h>') &&
+         !patched.include?('#import <FirebaseAuth/FirebaseAuth.h>')
+        patched = patched.sub(
+          '#import <FirebaseMessaging/FirebaseMessaging.h>',
+          "#import <FirebaseMessaging/FirebaseMessaging.h>\n#import <FirebaseAuth/FirebaseAuth.h>"
+        )
+      end
+
+      next if patched == content
+
+      File.chmod(0o644, source_path)
+      File.write(source_path, patched)
+    end
   end
 end
