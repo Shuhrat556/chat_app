@@ -2,6 +2,7 @@ import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:chat_app/src/features/auth/presentation/pages/sign_in_page.dart';
 import 'package:chat_app/src/features/auth/presentation/pages/sign_up_page.dart';
+import 'package:chat_app/src/features/auth/presentation/pages/profile_page.dart';
 import 'package:chat_app/src/features/chat/presentation/pages/chat_page.dart';
 import 'package:chat_app/src/features/home/presentation/pages/home_page.dart';
 import 'package:go_router/go_router.dart';
@@ -15,11 +16,12 @@ class AppRouter {
 
   late final GoRouter router = GoRouter(
     initialLocation: '/auth',
+    debugLogDiagnostics: true,
     refreshListenable: StreamRefreshListenable(_authBloc.stream),
     redirect: (context, state) {
       final path = state.fullPath ?? state.uri.path;
       final authState = _authBloc.state;
-      final loggedIn = authState.status == AuthStatus.authenticated;
+      final loggedIn = authState.user != null;
       final loggingIn = path == '/auth' || path == '/signup';
 
       if (!loggedIn && !loggingIn) return '/auth';
@@ -47,6 +49,10 @@ class AppRouter {
             peer: peer is AppUser ? peer : null,
           );
         },
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfilePage(),
       ),
     ],
   );

@@ -9,6 +9,8 @@ class ChatState extends Equatable {
     this.peer,
     this.error,
     this.currentUserId,
+    this.hasMore = true,
+    this.isLoadingMore = false,
   });
 
   final ChatStatus status;
@@ -16,6 +18,8 @@ class ChatState extends Equatable {
   final AppUser? peer;
   final String? error;
   final String? currentUserId;
+  final bool hasMore;
+  final bool isLoadingMore;
 
   ChatState copyWith({
     ChatStatus? status,
@@ -23,6 +27,8 @@ class ChatState extends Equatable {
     AppUser? peer,
     String? error,
     String? currentUserId,
+    bool? hasMore,
+    bool? isLoadingMore,
   }) {
     return ChatState(
       status: status ?? this.status,
@@ -30,9 +36,19 @@ class ChatState extends Equatable {
       peer: peer ?? this.peer,
       error: error,
       currentUserId: currentUserId ?? this.currentUserId,
+      hasMore: hasMore ?? this.hasMore,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
   }
 
   @override
-  List<Object?> get props => [status, messages, peer, error, currentUserId];
+  List<Object?> get props => [
+    status,
+    messages,
+    peer,
+    error,
+    currentUserId,
+    hasMore,
+    isLoadingMore,
+  ];
 }

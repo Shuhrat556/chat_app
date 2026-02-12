@@ -10,9 +10,9 @@ class SignUpUseCase {
     required String username,
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
-    required DateTime birthDate,
+    String? firstName,
+    String? lastName,
+    DateTime? birthDate,
     String? photoUrl,
     String? bio,
   }) {

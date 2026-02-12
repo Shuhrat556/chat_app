@@ -2,7 +2,7 @@ import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatMessageModel extends ChatMessage {
-  ChatMessageModel({
+  const ChatMessageModel({
     required super.id,
     required super.conversationId,
     required super.senderId,
@@ -12,14 +12,15 @@ class ChatMessageModel extends ChatMessage {
   });
 
   Map<String, dynamic> toMap({bool useServerTimestamp = false}) => {
-        'id': id,
-        'conversationId': conversationId,
-        'senderId': senderId,
-        'receiverId': receiverId,
-        'text': text,
-        'createdAt':
-            useServerTimestamp ? FieldValue.serverTimestamp() : createdAt.millisecondsSinceEpoch,
-      };
+    'id': id,
+    'conversationId': conversationId,
+    'senderId': senderId,
+    'receiverId': receiverId,
+    'text': text,
+    'createdAt': useServerTimestamp
+        ? FieldValue.serverTimestamp()
+        : Timestamp.fromDate(createdAt),
+  };
 
   factory ChatMessageModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,

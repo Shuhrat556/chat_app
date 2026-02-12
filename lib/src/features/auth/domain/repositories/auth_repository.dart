@@ -10,9 +10,9 @@ abstract class AuthRepository {
     required String username,
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
-    required DateTime birthDate,
+    String? firstName,
+    String? lastName,
+    DateTime? birthDate,
     String? photoUrl,
     String? bio,
   });
@@ -31,6 +31,23 @@ abstract class AuthRepository {
   });
 
   Future<void> signOut();
+
+  Future<AppUser> signInWithGoogle();
+
+  Future<AppUser> signInWithApple();
+
+  Future<void> sendPasswordReset({required String email});
+
+  Future<AppUser> updateProfile({
+    required String username,
+    String? firstName,
+    String? lastName,
+    DateTime? birthDate,
+    String? bio,
+    String? photoUrl,
+  });
+
+  Future<void> deleteAccount();
 
   Stream<AppUser?> authStateChanges();
 }

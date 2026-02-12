@@ -3,6 +3,8 @@ part of 'auth_bloc.dart';
 enum AuthStatus { initial, loading, authenticated, unauthenticated, failure }
 
 class AuthState extends Equatable {
+  static const _sentinel = Object();
+
   const AuthState({
     this.status = AuthStatus.initial,
     this.user,
@@ -19,16 +21,18 @@ class AuthState extends Equatable {
 
   AuthState copyWith({
     AuthStatus? status,
-    AppUser? user,
+    Object? user = _sentinel,
     String? message,
-    String? verificationId,
+    Object? verificationId = _sentinel,
     bool? otpSent,
   }) {
     return AuthState(
       status: status ?? this.status,
-      user: user ?? this.user,
+      user: identical(user, _sentinel) ? this.user : user as AppUser?,
       message: message,
-      verificationId: verificationId ?? this.verificationId,
+      verificationId: identical(verificationId, _sentinel)
+          ? this.verificationId
+          : verificationId as String?,
       otpSent: otpSent ?? this.otpSent,
     );
   }

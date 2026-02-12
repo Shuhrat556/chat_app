@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:chat_app/src/features/auth/data/datasources/firebase_auth_data_source.dart';
+import 'package:chat_app/src/features/auth/data/datasources/user_local_data_source.dart';
 import 'package:chat_app/src/features/auth/data/datasources/user_remote_data_source.dart';
 import 'package:chat_app/src/features/auth/data/datasources/presence_remote_data_source.dart';
 import 'package:chat_app/src/features/auth/data/models/app_user_model.dart';
@@ -11,33 +14,55 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
     required FirebaseAuthDataSource authDataSource,
+    required UserLocalDataSource userLocalDataSource,
     required UserRemoteDataSource userRemoteDataSource,
     required PresenceRemoteDataSource presenceRemoteDataSource,
     GoogleSignIn? googleSignIn,
-  })  : _authDataSource = authDataSource,
-        _userRemoteDataSource = userRemoteDataSource,
-        _presenceRemoteDataSource = presenceRemoteDataSource,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(scopes: const ['email']);
+  }) : _authDataSource = authDataSource,
+       _userLocalDataSource = userLocalDataSource,
+       _userRemoteDataSource = userRemoteDataSource,
+       _presenceRemoteDataSource = presenceRemoteDataSource,
+       _googleSignIn = googleSignIn ?? GoogleSignIn(scopes: const ['email']);
 
   final FirebaseAuthDataSource _authDataSource;
+  final UserLocalDataSource _userLocalDataSource;
   final UserRemoteDataSource _userRemoteDataSource;
   final PresenceRemoteDataSource _presenceRemoteDataSource;
   final GoogleSignIn _googleSignIn;
 
   @override
-  Stream<AppUser?> authStateChanges() {
-    return _authDataSource.authStateChanges().asyncMap((user) async {
-      if (user == null) return null;
-      final remote = await _userRemoteDataSource.fetchUser(user.uid);
-      if (remote != null) {
-        await _markOnline(user.uid);
-        return remote;
+  Stream<AppUser?> authStateChanges() async* {
+    await for (final firebaseUser in _authDataSource.authStateChanges()) {
+      if (firebaseUser == null) {
+        await _userLocalDataSource.clear();
+        yield null;
+        continue;
       }
-      final fallback = AppUserModel.fromFirebaseUser(user);
-      await _userRemoteDataSource.saveUser(fallback);
-      await _markOnline(user.uid);
-      return fallback;
-    });
+
+      final cached = await _userLocalDataSource.fetchCachedUser(
+        firebaseUser.uid,
+      );
+      if (cached != null) {
+        yield cached;
+      } else {
+        final fallback = AppUserModel.fromFirebaseUser(firebaseUser);
+        await _userLocalDataSource.saveUser(fallback);
+        yield fallback;
+      }
+
+      try {
+        final remote = await _userRemoteDataSource.fetchUser(firebaseUser.uid);
+        final resolved = remote ?? AppUserModel.fromFirebaseUser(firebaseUser);
+        if (remote == null) {
+          await _userRemoteDataSource.saveUser(resolved);
+        }
+        await _userLocalDataSource.saveUser(resolved);
+        unawaited(_markOnlineSafely(firebaseUser.uid));
+        yield resolved;
+      } catch (_) {
+        // Offline: keep local cached session without interrupting auth stream.
+      }
+    }
   }
 
   @override
@@ -58,15 +83,23 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    final remote = await _userRemoteDataSource.fetchUser(uid);
-    if (remote != null) {
-      await _markOnline(uid);
-      return remote;
+    try {
+      final remote = await _userRemoteDataSource.fetchUser(uid);
+      if (remote != null) {
+        await _userLocalDataSource.saveUser(remote);
+        await _markOnlineSafely(uid);
+        return remote;
+      }
+    } catch (_) {
+      // Continue with local fallback below.
     }
 
     final userModel = AppUserModel.fromFirebaseUser(credential.user!);
-    await _userRemoteDataSource.saveUser(userModel);
-    await _markOnline(uid);
+    try {
+      await _userRemoteDataSource.saveUser(userModel);
+    } catch (_) {}
+    await _userLocalDataSource.saveUser(userModel);
+    await _markOnlineSafely(uid);
     return userModel;
   }
 
@@ -75,13 +108,17 @@ class AuthRepositoryImpl implements AuthRepository {
     required String username,
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
-    required DateTime birthDate,
+    String? firstName,
+    String? lastName,
+    DateTime? birthDate,
     String? photoUrl,
     String? bio,
   }) async {
     final normalizedUsername = username.trim();
+    final cleanedFirstName = firstName?.trim();
+    final cleanedLastName = lastName?.trim();
+    final cleanedPhotoUrl = photoUrl?.trim();
+    final cleanedBio = bio?.trim();
 
     final credential = await _authDataSource.signUp(
       email: email,
@@ -115,11 +152,17 @@ class AuthRepositoryImpl implements AuthRepository {
       id: firebaseUser.uid,
       email: firebaseUser.email ?? email,
       username: normalizedUsername,
-      firstName: firstName,
-      lastName: lastName,
+      firstName: cleanedFirstName == null || cleanedFirstName.isEmpty
+          ? null
+          : cleanedFirstName,
+      lastName: cleanedLastName == null || cleanedLastName.isEmpty
+          ? null
+          : cleanedLastName,
       birthDate: birthDate,
-      bio: bio,
-      photoUrl: photoUrl ?? firebaseUser.photoURL,
+      bio: cleanedBio == null || cleanedBio.isEmpty ? null : cleanedBio,
+      photoUrl: cleanedPhotoUrl == null || cleanedPhotoUrl.isEmpty
+          ? firebaseUser.photoURL
+          : cleanedPhotoUrl,
       fcmToken: null,
       createdAt: DateTime.now(),
       isOnline: true,
@@ -127,7 +170,8 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     await _userRemoteDataSource.saveUser(userModel);
-    await _markOnline(firebaseUser.uid);
+    await _userLocalDataSource.saveUser(userModel);
+    await _markOnlineSafely(firebaseUser.uid);
     return userModel;
   }
 
@@ -135,16 +179,22 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> signOut() async {
     final uid = _authDataSource.currentUser?.uid;
     if (uid != null) {
-      await Future.wait([
-        _userRemoteDataSource.updatePresence(
-          userId: uid,
-          isOnline: false,
-          setLastSeen: true,
-        ),
-        _presenceRemoteDataSource.setOffline(),
-      ]);
+      try {
+        await Future.wait([
+          _userRemoteDataSource.saveFcmToken(userId: uid, fcmToken: null),
+          _userRemoteDataSource.updatePresence(
+            userId: uid,
+            isOnline: false,
+            setLastSeen: true,
+          ),
+          _presenceRemoteDataSource.setOffline(),
+        ]);
+      } catch (_) {
+        // Ignore network failures during local sign-out.
+      }
     }
     await _authDataSource.signOut();
+    await _userLocalDataSource.clear();
   }
 
   @override
@@ -175,7 +225,8 @@ class AuthRepositoryImpl implements AuthRepository {
     return _getOrCreateUserFromFirebaseUser(
       firebaseUser,
       preferredEmail: googleUser.email,
-      preferredUsername: googleUser.displayName ?? googleUser.email.split('@').first,
+      preferredUsername:
+          googleUser.displayName ?? googleUser.email.split('@').first,
       preferredPhoto: googleUser.photoUrl,
     );
   }
@@ -289,17 +340,27 @@ class AuthRepositoryImpl implements AuthRepository {
       id: firebaseUser.uid,
       email: firebaseUser.email ?? current?.email ?? '',
       username: normalizedUsername,
-      firstName:
-          cleanedFirstName == null ? current?.firstName : cleanedFirstName.isEmpty ? null : cleanedFirstName,
-      lastName:
-          cleanedLastName == null ? current?.lastName : cleanedLastName.isEmpty ? null : cleanedLastName,
+      firstName: cleanedFirstName == null
+          ? current?.firstName
+          : cleanedFirstName.isEmpty
+          ? null
+          : cleanedFirstName,
+      lastName: cleanedLastName == null
+          ? current?.lastName
+          : cleanedLastName.isEmpty
+          ? null
+          : cleanedLastName,
       birthDate: birthDate ?? current?.birthDate,
-      bio: cleanedBio == null ? current?.bio : cleanedBio.isEmpty ? null : cleanedBio,
+      bio: cleanedBio == null
+          ? current?.bio
+          : cleanedBio.isEmpty
+          ? null
+          : cleanedBio,
       photoUrl: cleanedPhoto == null
           ? current?.photoUrl
           : cleanedPhoto.isEmpty
-              ? null
-              : cleanedPhoto,
+          ? null
+          : cleanedPhoto,
       fcmToken: current?.fcmToken,
       createdAt: current?.createdAt ?? firebaseUser.metadata.creationTime,
       phone: firebaseUser.phoneNumber ?? current?.phone,
@@ -308,6 +369,7 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     await _userRemoteDataSource.saveUser(updatedUser);
+    await _userLocalDataSource.saveUser(updatedUser);
     return updatedUser;
   }
 
@@ -322,6 +384,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
     await _userRemoteDataSource.deleteUser(userId: firebaseUser.uid);
     await _authDataSource.deleteAccount();
+    await _userLocalDataSource.clear();
   }
 
   Future<AppUser> _getOrCreateUserFromFirebaseUser(
@@ -332,15 +395,21 @@ class AuthRepositoryImpl implements AuthRepository {
     String? firstName,
     String? lastName,
   }) async {
-    final remote = await _userRemoteDataSource.fetchUser(firebaseUser.uid);
-    if (remote != null) {
-      await _markOnline(firebaseUser.uid);
-      return remote;
+    try {
+      final remote = await _userRemoteDataSource.fetchUser(firebaseUser.uid);
+      if (remote != null) {
+        await _userLocalDataSource.saveUser(remote);
+        await _markOnlineSafely(firebaseUser.uid);
+        return remote;
+      }
+    } catch (_) {
+      // Continue with creation flow below.
     }
 
     final normalizedUsername = await _reserveUsername(
       userId: firebaseUser.uid,
-      desired: preferredUsername ??
+      desired:
+          preferredUsername ??
           firebaseUser.displayName ??
           firebaseUser.email?.split('@').first ??
           'user_${firebaseUser.uid.substring(0, 6)}',
@@ -365,7 +434,8 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     await _userRemoteDataSource.saveUser(userModel);
-    await _markOnline(firebaseUser.uid);
+    await _userLocalDataSource.saveUser(userModel);
+    await _markOnlineSafely(firebaseUser.uid);
     return userModel;
   }
 
@@ -375,7 +445,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     var candidate = _normalizeUsername(desired);
     if (candidate.length < 3) {
-      candidate = '${candidate}_${DateTime.now().millisecondsSinceEpoch % 1000}';
+      candidate =
+          '${candidate}_${DateTime.now().millisecondsSinceEpoch % 1000}';
     }
     try {
       await _userRemoteDataSource.reserveUsername(
@@ -395,10 +466,10 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   String _normalizeUsername(String value) {
-    final cleaned = value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9._-]'), '');
+    final cleaned = value.trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9._-]'),
+      '',
+    );
     if (cleaned.isNotEmpty) return cleaned;
     return 'user';
   }
@@ -433,8 +504,10 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     // Use provided username or fallback.
-    final phoneDigits =
-        (firebaseUser.phoneNumber ?? '').replaceAll(RegExp(r'\D'), '');
+    final phoneDigits = (firebaseUser.phoneNumber ?? '').replaceAll(
+      RegExp(r'\D'),
+      '',
+    );
     final fallbackUsername = phoneDigits.isNotEmpty
         ? 'tg_${phoneDigits.length >= 4 ? phoneDigits.substring(phoneDigits.length - 4) : phoneDigits}'
         : 'tg_user';
@@ -443,7 +516,7 @@ class AuthRepositoryImpl implements AuthRepository {
         : fallbackUsername;
 
     // Reserve if provided explicitly to avoid collision.
-      if (username != null && username.trim().isNotEmpty) {
+    if (username != null && username.trim().isNotEmpty) {
       try {
         await _userRemoteDataSource.reserveUsername(
           username: normalizedUsername,
@@ -463,12 +536,13 @@ class AuthRepositoryImpl implements AuthRepository {
           userId: firebaseUser.uid,
         );
       } on StateError {
-        normalizedUsername = '${fallbackUsername}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-      await _userRemoteDataSource.reserveUsername(
-        username: normalizedUsername,
-        userId: firebaseUser.uid,
-      );
-    }
+        normalizedUsername =
+            '${fallbackUsername}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+        await _userRemoteDataSource.reserveUsername(
+          username: normalizedUsername,
+          userId: firebaseUser.uid,
+        );
+      }
     }
 
     await firebaseUser.updateDisplayName(normalizedUsername);
@@ -486,12 +560,13 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     await _userRemoteDataSource.saveUser(userModel);
-    await _markOnline(firebaseUser.uid);
+    await _userLocalDataSource.saveUser(userModel);
+    await _markOnlineSafely(firebaseUser.uid);
     return userModel;
   }
 
-  Future<void> _markOnline(String uid) {
-    return Future.wait([
+  Future<void> _markOnline(String uid) async {
+    await Future.wait([
       _userRemoteDataSource.updatePresence(
         userId: uid,
         isOnline: true,
@@ -499,5 +574,13 @@ class AuthRepositoryImpl implements AuthRepository {
       ),
       _presenceRemoteDataSource.setOnline(),
     ]);
+  }
+
+  Future<void> _markOnlineSafely(String uid) async {
+    try {
+      await _markOnline(uid);
+    } catch (_) {
+      // Ignore network failures for non-critical presence updates.
+    }
   }
 }

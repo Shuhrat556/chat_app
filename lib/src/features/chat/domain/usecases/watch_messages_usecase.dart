@@ -6,7 +6,7 @@ class WatchMessagesUseCase {
 
   final ChatRepository _repository;
 
-  Stream<List<ChatMessage>> call({required String peerId}) {
-    return _repository.watchMessages(peerId: peerId);
+  Stream<List<ChatMessage>> call({required String peerId, int limit = 40}) {
+    return _repository.watchMessages(peerId: peerId, limit: limit);
   }
 }

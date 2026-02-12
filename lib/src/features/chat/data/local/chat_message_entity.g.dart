@@ -52,7 +52,7 @@ const ChatMessageEntitySchema = CollectionSchema(
   serialize: _chatMessageEntitySerialize,
   deserialize: _chatMessageEntityDeserialize,
   deserializeProp: _chatMessageEntityDeserializeProp,
-  idName: r'id',
+  idName: r'isarId',
   indexes: {
     r'messageId': IndexSchema(
       id: -635287409172016016,
@@ -67,9 +67,9 @@ const ChatMessageEntitySchema = CollectionSchema(
         )
       ],
     ),
-    r'conversationId_createdAt': IndexSchema(
-      id: -6415830084913696883,
-      name: r'conversationId_createdAt',
+    r'conversationId': IndexSchema(
+      id: 2945908346256754300,
+      name: r'conversationId',
       unique: false,
       replace: false,
       properties: [
@@ -77,7 +77,15 @@ const ChatMessageEntitySchema = CollectionSchema(
           name: r'conversationId',
           type: IndexType.hash,
           caseSensitive: true,
-        ),
+        )
+      ],
+    ),
+    r'createdAt': IndexSchema(
+      id: -3433535483987302584,
+      name: r'createdAt',
+      unique: false,
+      replace: false,
+      properties: [
         IndexPropertySchema(
           name: r'createdAt',
           type: IndexType.value,
@@ -128,15 +136,14 @@ ChatMessageEntity _chatMessageEntityDeserialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  final object = ChatMessageEntity(
-    conversationId: reader.readString(offsets[0]),
-    createdAt: reader.readDateTime(offsets[1]),
-    messageId: reader.readString(offsets[2]),
-    receiverId: reader.readString(offsets[3]),
-    senderId: reader.readString(offsets[4]),
-    text: reader.readString(offsets[5]),
-  );
-  object.id = id;
+  final object = ChatMessageEntity();
+  object.conversationId = reader.readString(offsets[0]);
+  object.createdAt = reader.readDateTime(offsets[1]);
+  object.isarId = id;
+  object.messageId = reader.readString(offsets[2]);
+  object.receiverId = reader.readString(offsets[3]);
+  object.senderId = reader.readString(offsets[4]);
+  object.text = reader.readString(offsets[5]);
   return object;
 }
 
@@ -165,7 +172,7 @@ P _chatMessageEntityDeserializeProp<P>(
 }
 
 Id _chatMessageEntityGetId(ChatMessageEntity object) {
-  return object.id;
+  return object.isarId;
 }
 
 List<IsarLinkBase<dynamic>> _chatMessageEntityGetLinks(
@@ -175,7 +182,7 @@ List<IsarLinkBase<dynamic>> _chatMessageEntityGetLinks(
 
 void _chatMessageEntityAttach(
     IsarCollection<dynamic> col, Id id, ChatMessageEntity object) {
-  object.id = id;
+  object.isarId = id;
 }
 
 extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
@@ -236,9 +243,18 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
 
 extension ChatMessageEntityQueryWhereSort
     on QueryBuilder<ChatMessageEntity, ChatMessageEntity, QWhere> {
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhere> anyId() {
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhere> anyIsarId() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhere>
+      anyCreatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'createdAt'),
+      );
     });
   }
 }
@@ -246,68 +262,68 @@ extension ChatMessageEntityQueryWhereSort
 extension ChatMessageEntityQueryWhere
     on QueryBuilder<ChatMessageEntity, ChatMessageEntity, QWhereClause> {
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      idEqualTo(Id id) {
+      isarIdEqualTo(Id isarId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IdWhereClause.between(
-        lower: id,
-        upper: id,
+        lower: isarId,
+        upper: isarId,
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      idNotEqualTo(Id id) {
+      isarIdNotEqualTo(Id isarId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
-              IdWhereClause.lessThan(upper: id, includeUpper: false),
+              IdWhereClause.lessThan(upper: isarId, includeUpper: false),
             )
             .addWhereClause(
-              IdWhereClause.greaterThan(lower: id, includeLower: false),
+              IdWhereClause.greaterThan(lower: isarId, includeLower: false),
             );
       } else {
         return query
             .addWhereClause(
-              IdWhereClause.greaterThan(lower: id, includeLower: false),
+              IdWhereClause.greaterThan(lower: isarId, includeLower: false),
             )
             .addWhereClause(
-              IdWhereClause.lessThan(upper: id, includeUpper: false),
+              IdWhereClause.lessThan(upper: isarId, includeUpper: false),
             );
       }
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      idGreaterThan(Id id, {bool include = false}) {
+      isarIdGreaterThan(Id isarId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IdWhereClause.greaterThan(lower: id, includeLower: include),
+        IdWhereClause.greaterThan(lower: isarId, includeLower: include),
       );
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      idLessThan(Id id, {bool include = false}) {
+      isarIdLessThan(Id isarId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IdWhereClause.lessThan(upper: id, includeUpper: include),
+        IdWhereClause.lessThan(upper: isarId, includeUpper: include),
       );
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      idBetween(
-    Id lowerId,
-    Id upperId, {
+      isarIdBetween(
+    Id lowerIsarId,
+    Id upperIsarId, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IdWhereClause.between(
-        lower: lowerId,
+        lower: lowerIsarId,
         includeLower: includeLower,
-        upper: upperId,
+        upper: upperIsarId,
         includeUpper: includeUpper,
       ));
     });
@@ -359,28 +375,28 @@ extension ChatMessageEntityQueryWhere
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdEqualToAnyCreatedAt(String conversationId) {
+      conversationIdEqualTo(String conversationId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'conversationId_createdAt',
+        indexName: r'conversationId',
         value: [conversationId],
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdNotEqualToAnyCreatedAt(String conversationId) {
+      conversationIdNotEqualTo(String conversationId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
+              indexName: r'conversationId',
               lower: [],
               upper: [conversationId],
               includeUpper: false,
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
+              indexName: r'conversationId',
               lower: [conversationId],
               includeLower: false,
               upper: [],
@@ -388,13 +404,13 @@ extension ChatMessageEntityQueryWhere
       } else {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
+              indexName: r'conversationId',
               lower: [conversationId],
               includeLower: false,
               upper: [],
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
+              indexName: r'conversationId',
               lower: [],
               upper: [conversationId],
               includeUpper: false,
@@ -404,46 +420,44 @@ extension ChatMessageEntityQueryWhere
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdCreatedAtEqualTo(
-          String conversationId, DateTime createdAt) {
+      createdAtEqualTo(DateTime createdAt) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'conversationId_createdAt',
-        value: [conversationId, createdAt],
+        indexName: r'createdAt',
+        value: [createdAt],
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdEqualToCreatedAtNotEqualTo(
-          String conversationId, DateTime createdAt) {
+      createdAtNotEqualTo(DateTime createdAt) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
-              lower: [conversationId],
-              upper: [conversationId, createdAt],
+              indexName: r'createdAt',
+              lower: [],
+              upper: [createdAt],
               includeUpper: false,
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
-              lower: [conversationId, createdAt],
+              indexName: r'createdAt',
+              lower: [createdAt],
               includeLower: false,
-              upper: [conversationId],
+              upper: [],
             ));
       } else {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
-              lower: [conversationId, createdAt],
+              indexName: r'createdAt',
+              lower: [createdAt],
               includeLower: false,
-              upper: [conversationId],
+              upper: [],
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId_createdAt',
-              lower: [conversationId],
-              upper: [conversationId, createdAt],
+              indexName: r'createdAt',
+              lower: [],
+              upper: [createdAt],
               includeUpper: false,
             ));
       }
@@ -451,40 +465,37 @@ extension ChatMessageEntityQueryWhere
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdEqualToCreatedAtGreaterThan(
-    String conversationId,
+      createdAtGreaterThan(
     DateTime createdAt, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'conversationId_createdAt',
-        lower: [conversationId, createdAt],
+        indexName: r'createdAt',
+        lower: [createdAt],
         includeLower: include,
-        upper: [conversationId],
+        upper: [],
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdEqualToCreatedAtLessThan(
-    String conversationId,
+      createdAtLessThan(
     DateTime createdAt, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'conversationId_createdAt',
-        lower: [conversationId],
-        upper: [conversationId, createdAt],
+        indexName: r'createdAt',
+        lower: [],
+        upper: [createdAt],
         includeUpper: include,
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterWhereClause>
-      conversationIdEqualToCreatedAtBetween(
-    String conversationId,
+      createdAtBetween(
     DateTime lowerCreatedAt,
     DateTime upperCreatedAt, {
     bool includeLower = true,
@@ -492,10 +503,10 @@ extension ChatMessageEntityQueryWhere
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'conversationId_createdAt',
-        lower: [conversationId, lowerCreatedAt],
+        indexName: r'createdAt',
+        lower: [lowerCreatedAt],
         includeLower: includeLower,
-        upper: [conversationId, upperCreatedAt],
+        upper: [upperCreatedAt],
         includeUpper: includeUpper,
       ));
     });
@@ -697,45 +708,45 @@ extension ChatMessageEntityQueryFilter
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-      idEqualTo(Id value) {
+      isarIdEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'id',
+        property: r'isarId',
         value: value,
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-      idGreaterThan(
+      isarIdGreaterThan(
     Id value, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         include: include,
-        property: r'id',
+        property: r'isarId',
         value: value,
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-      idLessThan(
+      isarIdLessThan(
     Id value, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.lessThan(
         include: include,
-        property: r'id',
+        property: r'isarId',
         value: value,
       ));
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-      idBetween(
+      isarIdBetween(
     Id lower,
     Id upper, {
     bool includeLower = true,
@@ -743,7 +754,7 @@ extension ChatMessageEntityQueryFilter
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
-        property: r'id',
+        property: r'isarId',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -1420,16 +1431,17 @@ extension ChatMessageEntityQuerySortThenBy
     });
   }
 
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy> thenById() {
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+      thenByIsarId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
+      return query.addSortBy(r'isarId', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-      thenByIdDesc() {
+      thenByIsarIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'isarId', Sort.desc);
     });
   }
 
@@ -1538,9 +1550,9 @@ extension ChatMessageEntityQueryWhereDistinct
 
 extension ChatMessageEntityQueryProperty
     on QueryBuilder<ChatMessageEntity, ChatMessageEntity, QQueryProperty> {
-  QueryBuilder<ChatMessageEntity, int, QQueryOperations> idProperty() {
+  QueryBuilder<ChatMessageEntity, int, QQueryOperations> isarIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'isarId');
     });
   }
 

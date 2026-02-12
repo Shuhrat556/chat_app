@@ -35,9 +35,10 @@ class SignUpRequested extends AuthEvent {
     required this.username,
     required this.email,
     required this.password,
-    required this.firstName,
-    required this.lastName,
-    required this.birthDate,
+    required this.confirmPassword,
+    this.firstName,
+    this.lastName,
+    this.birthDate,
     this.photoUrl,
     this.bio,
   });
@@ -45,19 +46,78 @@ class SignUpRequested extends AuthEvent {
   final String username;
   final String email;
   final String password;
-  final String firstName;
-  final String lastName;
-  final DateTime birthDate;
+  final String confirmPassword;
+  final String? firstName;
+  final String? lastName;
+  final DateTime? birthDate;
   final String? photoUrl;
   final String? bio;
 
   @override
-  List<Object?> get props =>
-      [username, email, password, firstName, lastName, birthDate, photoUrl, bio];
+  List<Object?> get props => [
+    username,
+    email,
+    password,
+    confirmPassword,
+    firstName,
+    lastName,
+    birthDate,
+    photoUrl,
+    bio,
+  ];
 }
 
 class SignOutRequested extends AuthEvent {
   const SignOutRequested();
+}
+
+class GoogleSignInRequested extends AuthEvent {
+  const GoogleSignInRequested();
+}
+
+class AppleSignInRequested extends AuthEvent {
+  const AppleSignInRequested();
+}
+
+class PasswordResetRequested extends AuthEvent {
+  const PasswordResetRequested({required this.email});
+
+  final String email;
+
+  @override
+  List<Object?> get props => [email];
+}
+
+class ProfileUpdateRequested extends AuthEvent {
+  const ProfileUpdateRequested({
+    required this.username,
+    this.firstName,
+    this.lastName,
+    this.birthDate,
+    this.bio,
+    this.photoUrl,
+  });
+
+  final String username;
+  final String? firstName;
+  final String? lastName;
+  final DateTime? birthDate;
+  final String? bio;
+  final String? photoUrl;
+
+  @override
+  List<Object?> get props => [
+    username,
+    firstName,
+    lastName,
+    birthDate,
+    bio,
+    photoUrl,
+  ];
+}
+
+class DeleteAccountRequested extends AuthEvent {
+  const DeleteAccountRequested();
 }
 
 class PhoneOtpRequested extends AuthEvent {

@@ -13,6 +13,8 @@ class AppUser extends Equatable {
     this.fcmToken,
     this.createdAt,
     this.phone,
+    this.isOnline,
+    this.lastSeen,
   });
 
   final String id;
@@ -26,6 +28,8 @@ class AppUser extends Equatable {
   final String? fcmToken;
   final DateTime? createdAt;
   final String? phone;
+  final bool? isOnline;
+  final DateTime? lastSeen;
 
   @override
   List<Object?> get props => [
@@ -40,5 +44,7 @@ class AppUser extends Equatable {
         fcmToken,
         createdAt,
         phone,
+        isOnline,
+        lastSeen,
       ];
 }

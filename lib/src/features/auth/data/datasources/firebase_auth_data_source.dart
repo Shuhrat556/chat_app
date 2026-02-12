@@ -75,4 +75,44 @@ class FirebaseAuthDataSource {
     );
     return _firebaseAuth.signInWithCredential(credential);
   }
+
+  Future<UserCredential> signInWithCredential(AuthCredential credential) {
+    return _firebaseAuth.signInWithCredential(credential);
+  }
+
+  Future<void> sendPasswordResetEmail({required String email}) {
+    return _firebaseAuth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  Future<void> updateProfile({
+    String? displayName,
+    String? photoUrl,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-user',
+        message: 'User credential not found',
+      );
+    }
+
+    if (displayName != null) {
+      await user.updateDisplayName(displayName);
+    }
+    if (photoUrl != null) {
+      await user.updatePhotoURL(photoUrl);
+    }
+    await user.reload();
+  }
+
+  Future<void> deleteAccount() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-user',
+        message: 'User credential not found',
+      );
+    }
+    await user.delete();
+  }
 }

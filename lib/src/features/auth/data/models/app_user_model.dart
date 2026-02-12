@@ -15,6 +15,8 @@ class AppUserModel extends AppUser {
     super.fcmToken,
     super.createdAt,
     super.phone,
+    super.isOnline,
+    super.lastSeen,
   });
 
   Map<String, dynamic> toMap() => {
@@ -29,6 +31,8 @@ class AppUserModel extends AppUser {
         'fcmToken': fcmToken,
         'createdAt': createdAt?.millisecondsSinceEpoch,
         'phone': phone,
+        'isOnline': isOnline,
+        'lastSeen': lastSeen?.millisecondsSinceEpoch,
       };
 
   factory AppUserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -52,6 +56,8 @@ class AppUserModel extends AppUser {
           ? DateTime.fromMillisecondsSinceEpoch(data['createdAt'] as int)
           : null,
       phone: data['phone'] as String?,
+      isOnline: data['isOnline'] as bool?,
+      lastSeen: _readTimestampOrInt(data['lastSeen']),
     );
   }
 
@@ -67,5 +73,17 @@ class AppUserModel extends AppUser {
         fcmToken: null,
         createdAt: user.metadata.creationTime,
         phone: user.phoneNumber,
+        isOnline: true,
+        lastSeen: DateTime.now(),
       );
+
+  static DateTime? _readTimestampOrInt(dynamic value) {
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+    return null;
+  }
 }
