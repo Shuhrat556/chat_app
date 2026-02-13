@@ -1,10 +1,7 @@
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 
 abstract class AuthRepository {
-  Future<AppUser> signIn({
-    required String email,
-    required String password,
-  });
+  Future<AppUser> signIn({required String email, required String password});
 
   Future<AppUser> signUp({
     required String username,
@@ -37,6 +34,11 @@ abstract class AuthRepository {
   Future<AppUser> signInWithApple();
 
   Future<void> sendPasswordReset({required String email});
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
 
   Future<AppUser> updateProfile({
     required String username,

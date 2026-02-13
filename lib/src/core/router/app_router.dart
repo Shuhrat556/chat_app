@@ -1,6 +1,7 @@
 import 'package:chat_app/src/core/router/refresh_stream.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:chat_app/src/features/auth/presentation/pages/change_password_page.dart';
 import 'package:chat_app/src/features/auth/presentation/pages/profile_page.dart';
 import 'package:chat_app/src/features/auth/presentation/pages/sign_in_page.dart';
 import 'package:chat_app/src/features/auth/presentation/pages/sign_up_page.dart';
@@ -35,24 +36,95 @@ class AppRouter {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const _AuthBootstrapPage(),
+        pageBuilder: (context, state) => _buildPage(
+          key: state.pageKey,
+          child: const _AuthBootstrapPage(),
+          animate: false,
+        ),
       ),
-      GoRoute(path: '/auth', builder: (context, state) => const SignInPage()),
-      GoRoute(path: '/signup', builder: (context, state) => const SignUpPage()),
-      GoRoute(path: '/home', builder: (context, state) => const HomePage()),
+      GoRoute(
+        path: '/auth',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const SignInPage()),
+      ),
+      GoRoute(
+        path: '/signup',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const SignUpPage()),
+      ),
+      GoRoute(
+        path: '/home',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const HomePage()),
+      ),
       GoRoute(
         path: '/chat/:userId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final peer = state.extra;
-          return ChatPage(peer: peer is AppUser ? peer : null);
+          return _buildPage(
+            key: state.pageKey,
+            child: ChatPage(peer: peer is AppUser ? peer : null),
+          );
         },
       ),
       GoRoute(
         path: '/profile',
-        builder: (context, state) => const ProfilePage(),
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const ProfilePage()),
+      ),
+      GoRoute(
+        path: '/change-password',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const ChangePasswordPage()),
       ),
     ],
   );
+
+  CustomTransitionPage<void> _buildPage({
+    required LocalKey key,
+    required Widget child,
+    bool animate = true,
+  }) {
+    if (!animate) {
+      return CustomTransitionPage<void>(
+        key: key,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        child: child,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            child,
+      );
+    }
+
+    return CustomTransitionPage<void>(
+      key: key,
+      transitionDuration: const Duration(milliseconds: 230),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      child: child,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        final offsetTween = Tween<Offset>(
+          begin: const Offset(0.06, 0),
+          end: Offset.zero,
+        );
+        final scaleTween = Tween<double>(begin: 0.985, end: 1.0);
+        return SlideTransition(
+          position: offsetTween.animate(curved),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 0.90, end: 1).animate(curved),
+            child: ScaleTransition(
+              scale: scaleTween.animate(curved),
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _AuthBootstrapPage extends StatelessWidget {
@@ -60,6 +132,9 @@ class _AuthBootstrapPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return const Scaffold(
+      backgroundColor: Color(0xFF010A1F),
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }

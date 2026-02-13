@@ -4,6 +4,7 @@ import 'package:bloc/bloc.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/load_older_messages_usecase.dart';
+import 'package:chat_app/src/features/chat/domain/usecases/mark_conversation_read_usecase.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/send_message_usecase.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/watch_messages_usecase.dart';
 import 'package:equatable/equatable.dart';
@@ -15,10 +16,12 @@ class ChatCubit extends Cubit<ChatState> {
   ChatCubit({
     required WatchMessagesUseCase watchMessagesUseCase,
     required LoadOlderMessagesUseCase loadOlderMessagesUseCase,
+    required MarkConversationReadUseCase markConversationReadUseCase,
     required SendMessageUseCase sendMessageUseCase,
     required FirebaseAuth firebaseAuth,
   }) : _watchMessagesUseCase = watchMessagesUseCase,
        _loadOlderMessagesUseCase = loadOlderMessagesUseCase,
+       _markConversationReadUseCase = markConversationReadUseCase,
        _sendMessageUseCase = sendMessageUseCase,
        _firebaseAuth = firebaseAuth,
        super(const ChatState());
@@ -27,6 +30,7 @@ class ChatCubit extends Cubit<ChatState> {
 
   final WatchMessagesUseCase _watchMessagesUseCase;
   final LoadOlderMessagesUseCase _loadOlderMessagesUseCase;
+  final MarkConversationReadUseCase _markConversationReadUseCase;
   final SendMessageUseCase _sendMessageUseCase;
   final FirebaseAuth _firebaseAuth;
 
@@ -34,12 +38,14 @@ class ChatCubit extends Cubit<ChatState> {
   List<ChatMessage> _olderMessages = const [];
   bool _hasMore = true;
   bool _isLoadingMore = false;
+  String? _lastHandledIncomingId;
 
   void start(AppUser peer) {
     final currentUserId = _firebaseAuth.currentUser?.uid;
     _olderMessages = const [];
     _hasMore = true;
     _isLoadingMore = false;
+    _lastHandledIncomingId = null;
     emit(
       state.copyWith(
         peer: peer,
@@ -50,6 +56,7 @@ class ChatCubit extends Cubit<ChatState> {
         isLoadingMore: false,
       ),
     );
+    unawaited(_markConversationReadUseCase(peerId: peer.id));
     _sub?.cancel();
     _sub = _watchMessagesUseCase(peerId: peer.id, limit: _pageSize).listen(
       (messages) {
@@ -69,6 +76,17 @@ class ChatCubit extends Cubit<ChatState> {
             isLoadingMore: _isLoadingMore,
           ),
         );
+
+        for (var i = merged.length - 1; i >= 0; i--) {
+          final message = merged[i];
+          if (message.senderId == peer.id) {
+            if (_lastHandledIncomingId != message.id) {
+              _lastHandledIncomingId = message.id;
+              unawaited(_markConversationReadUseCase(peerId: peer.id));
+            }
+            break;
+          }
+        }
       },
       onError: (error) => emit(
         state.copyWith(status: ChatStatus.error, error: error.toString()),
@@ -133,6 +151,16 @@ class ChatCubit extends Cubit<ChatState> {
     final peerId = state.peer?.id;
     if (peerId == null) return Future.value();
     return _sendMessageUseCase(peerId: peerId, text: text);
+  }
+
+  Future<void> sendImage(String imageUrl, {String? caption}) {
+    final peerId = state.peer?.id;
+    if (peerId == null) return Future.value();
+    return _sendMessageUseCase(
+      peerId: peerId,
+      text: caption ?? '',
+      imageUrl: imageUrl,
+    );
   }
 
   List<ChatMessage> _mergeMessages({

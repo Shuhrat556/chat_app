@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -6,42 +7,54 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
+  static const _channelId = 'chat_messages_high_v2';
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
 
   static const AndroidNotificationChannel _chatChannel =
       AndroidNotificationChannel(
-        'chat_messages',
+        _channelId,
         'Chat Messages',
         description: 'Incoming chat messages',
-        importance: Importance.high,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
       );
 
   static bool _initialized = false;
+  static bool _backgroundHandlerRegistered = false;
+  static bool _localInitialized = false;
   static StreamSubscription<RemoteMessage>? _foregroundSub;
 
   static Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
+
+  static void registerBackgroundHandler() {
+    if (_backgroundHandlerRegistered) return;
+    _backgroundHandlerRegistered = true;
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  }
 
   static Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
 
     try {
-      FirebaseMessaging.onBackgroundMessage(
-        _firebaseMessagingBackgroundHandler,
-      );
-      await _initializeLocalNotifications();
+      registerBackgroundHandler();
+      await _initializeLocalNotifications(_local);
       await _messaging.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
         sound: true,
       );
+      await _foregroundSub?.cancel();
       _foregroundSub = FirebaseMessaging.onMessage.listen(_onMessage);
     } on MissingPluginException {
       // Plugin may be unavailable during a hot restart on desktop.
+      _initialized = false;
     } catch (_) {
       // Keep app startup resilient if notifications fail to init.
+      _initialized = false;
     }
   }
 
@@ -57,12 +70,18 @@ class NotificationService {
 
   static Future<NotificationSettings?> requestPermissionAfterAuth() async {
     try {
-      return _messaging.requestPermission(
+      final settings = await _messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
         provisional: false,
       );
+      final androidImplementation = _local
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidImplementation?.requestNotificationsPermission();
+      return settings;
     } on MissingPluginException {
       return null;
     } catch (_) {
@@ -76,87 +95,123 @@ class NotificationService {
     _initialized = false;
   }
 
-  static Future<void> _initializeLocalNotifications() async {
+  static Future<void> _initializeLocalNotifications(
+    FlutterLocalNotificationsPlugin localPlugin,
+  ) async {
+    if (identical(localPlugin, _local) && _localInitialized) return;
+
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
       macOS: DarwinInitializationSettings(),
     );
 
-    await _local.initialize(settings);
+    await localPlugin.initialize(settings);
 
-    final androidImplementation = _local
+    final androidImplementation = localPlugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
     await androidImplementation?.createNotificationChannel(_chatChannel);
+    if (identical(localPlugin, _local)) {
+      _localInitialized = true;
+    }
   }
 
   static Future<void> _onMessage(RemoteMessage message) async {
-    final title =
-        message.notification?.title ?? message.data['title'] as String?;
-    final body = message.notification?.body ?? message.data['body'] as String?;
+    await _showRemoteMessageAsLocal(
+      message,
+      localPlugin: _local,
+      onlyDataPayload: false,
+    );
+  }
+
+  static Future<void> _showRemoteMessageAsLocal(
+    RemoteMessage message, {
+    required FlutterLocalNotificationsPlugin localPlugin,
+    required bool onlyDataPayload,
+  }) async {
+    if (onlyDataPayload && message.notification != null) {
+      // System notification payload is already shown by OS in background.
+      return;
+    }
+
+    final title = _extractTitle(message);
+    final body = _extractBody(message);
     if (title == null && body == null) return;
+
     await _showLocalNotification(
-      id: message.hashCode,
+      localPlugin: localPlugin,
+      id: message.messageId?.hashCode ?? message.hashCode,
       title: title,
       body: body,
     );
   }
 
+  static String? _extractTitle(RemoteMessage message) {
+    return message.notification?.title ??
+        _readString(message.data, 'title') ??
+        _readString(message.data, 'senderName');
+  }
+
+  static String? _extractBody(RemoteMessage message) {
+    return message.notification?.body ??
+        _readString(message.data, 'body') ??
+        _readString(message.data, 'text') ??
+        _readString(message.data, 'message');
+  }
+
+  static String? _readString(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
   static Future<void> _showLocalNotification({
+    required FlutterLocalNotificationsPlugin localPlugin,
     required int id,
     required String? title,
     required String? body,
   }) async {
-    const android = AndroidNotificationDetails(
-      'chat_messages',
-      'Chat Messages',
+    final android = AndroidNotificationDetails(
+      _chatChannel.id,
+      _chatChannel.name,
       channelDescription: 'Incoming chat messages',
-      importance: Importance.high,
+      importance: Importance.max,
       priority: Priority.high,
       playSound: true,
+      enableVibration: true,
+      ticker: 'chat-message',
     );
     const ios = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
     );
-    const details = NotificationDetails(android: android, iOS: ios, macOS: ios);
+    final details = NotificationDetails(android: android, iOS: ios, macOS: ios);
 
-    await _local.show(id, title, body, details);
+    await localPlugin.show(id, title, body, details);
   }
 }
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
+    DartPluginRegistrant.ensureInitialized();
+  } catch (_) {}
+
+  try {
     await Firebase.initializeApp();
   } catch (_) {}
 
-  final title = message.notification?.title ?? message.data['title'] as String?;
-  final body = message.notification?.body ?? message.data['body'] as String?;
-  if (title == null && body == null) return;
-
-  const android = AndroidNotificationDetails(
-    'chat_messages',
-    'Chat Messages',
-    channelDescription: 'Incoming chat messages',
-    importance: Importance.high,
-    priority: Priority.high,
-    playSound: true,
-  );
-  const ios = DarwinNotificationDetails(
-    presentAlert: true,
-    presentBadge: true,
-    presentSound: true,
-  );
-  const details = NotificationDetails(android: android, iOS: ios, macOS: ios);
-
-  await FlutterLocalNotificationsPlugin().show(
-    message.hashCode,
-    title,
-    body,
-    details,
-  );
+  try {
+    final localPlugin = FlutterLocalNotificationsPlugin();
+    await NotificationService._initializeLocalNotifications(localPlugin);
+    await NotificationService._showRemoteMessageAsLocal(
+      message,
+      localPlugin: localPlugin,
+      onlyDataPayload: true,
+    );
+  } catch (_) {}
 }

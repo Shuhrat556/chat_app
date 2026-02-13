@@ -8,6 +8,7 @@ class ChatMessageModel extends ChatMessage {
     required super.senderId,
     required super.receiverId,
     required super.text,
+    super.imageUrl,
     required super.createdAt,
   });
 
@@ -17,6 +18,7 @@ class ChatMessageModel extends ChatMessage {
     'senderId': senderId,
     'receiverId': receiverId,
     'text': text,
+    'imageUrl': imageUrl,
     'createdAt': useServerTimestamp
         ? FieldValue.serverTimestamp()
         : Timestamp.fromDate(createdAt),
@@ -30,7 +32,7 @@ class ChatMessageModel extends ChatMessage {
       throw StateError('Xabar hujjati bo\'sh: ${doc.id}');
     }
 
-    final createdAtRaw = data['createdAt'];
+    final createdAtRaw = data['createdAt'] ?? data['timestamp'];
     DateTime createdAt;
     if (createdAtRaw is Timestamp) {
       createdAt = createdAtRaw.toDate();
@@ -40,12 +42,28 @@ class ChatMessageModel extends ChatMessage {
       createdAt = DateTime.now();
     }
 
+    final inferredConversationId = doc.reference.parent.parent?.id ?? '';
+
     return ChatMessageModel(
       id: data['id'] as String? ?? doc.id,
-      conversationId: data['conversationId'] as String? ?? '',
-      senderId: data['senderId'] as String? ?? '',
-      receiverId: data['receiverId'] as String? ?? '',
-      text: data['text'] as String? ?? '',
+      conversationId:
+          data['conversationId'] as String? ?? inferredConversationId,
+      senderId:
+          data['senderId'] as String? ??
+          data['fromUserId'] as String? ??
+          data['fromId'] as String? ??
+          '',
+      receiverId:
+          data['receiverId'] as String? ??
+          data['toUserId'] as String? ??
+          data['toId'] as String? ??
+          '',
+      text:
+          data['text'] as String? ??
+          data['body'] as String? ??
+          data['message'] as String? ??
+          '',
+      imageUrl: data['imageUrl'] as String?,
       createdAt: createdAt,
     );
   }

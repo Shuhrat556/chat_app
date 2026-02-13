@@ -1,3 +1,4 @@
+import 'package:chat_app/src/features/chat/domain/entities/chat_conversation_preview.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 
 abstract class ChatRepository {
@@ -6,6 +7,11 @@ abstract class ChatRepository {
     int limit = 40,
   });
 
+  Stream<Map<String, int>> watchUnreadCountsByPeer();
+
+  Stream<Map<String, ChatConversationPreview>>
+  watchConversationPreviewsByPeer();
+
   Future<List<ChatMessage>> loadOlderMessages({
     required String peerId,
     required DateTime beforeCreatedAt,
@@ -13,5 +19,11 @@ abstract class ChatRepository {
     int limit = 40,
   });
 
-  Future<void> sendMessage({required String peerId, required String text});
+  Future<void> sendMessage({
+    required String peerId,
+    required String text,
+    String? imageUrl,
+  });
+
+  Future<void> markConversationRead({required String peerId});
 }

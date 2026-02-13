@@ -84,10 +84,32 @@ class FirebaseAuthDataSource {
     return _firebaseAuth.sendPasswordResetEmail(email: email.trim());
   }
 
-  Future<void> updateProfile({
-    String? displayName,
-    String? photoUrl,
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
   }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-user',
+        message: 'User credential not found',
+      );
+    }
+
+    final email = user.email;
+    if (email != null && email.trim().isNotEmpty) {
+      final credential = EmailAuthProvider.credential(
+        email: email.trim(),
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+    }
+
+    await user.updatePassword(newPassword);
+    await user.reload();
+  }
+
+  Future<void> updateProfile({String? displayName, String? photoUrl}) async {
     final user = _firebaseAuth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(

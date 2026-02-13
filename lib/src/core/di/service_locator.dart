@@ -6,6 +6,7 @@ import 'package:chat_app/src/features/auth/data/repositories_impl/auth_repositor
 import 'package:chat_app/src/features/auth/domain/repositories/auth_repository.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/observe_auth_state_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/send_phone_otp_usecase.dart';
+import 'package:chat_app/src/features/auth/domain/usecases/change_password_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_with_google_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_with_apple_usecase.dart';
@@ -21,6 +22,7 @@ import 'package:chat_app/src/features/chat/data/datasources/chat_remote_data_sou
 import 'package:chat_app/src/features/chat/data/repositories_impl/chat_repository_impl.dart';
 import 'package:chat_app/src/features/chat/domain/repositories/chat_repository.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/load_older_messages_usecase.dart';
+import 'package:chat_app/src/features/chat/domain/usecases/mark_conversation_read_usecase.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/send_message_usecase.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/watch_messages_usecase.dart';
 import 'package:chat_app/src/features/chat/presentation/cubit/chat_cubit.dart';
@@ -87,6 +89,9 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<SendPasswordResetUseCase>(
       () => SendPasswordResetUseCase(sl()),
     )
+    ..registerLazySingleton<ChangePasswordUseCase>(
+      () => ChangePasswordUseCase(sl()),
+    )
     ..registerLazySingleton<TokenSyncService>(
       () => TokenSyncService(sl(), sl()),
     )
@@ -98,6 +103,7 @@ Future<void> configureDependencies() async {
         signUpUseCase: sl(),
         signOutUseCase: sl(),
         sendPasswordResetUseCase: sl(),
+        changePasswordUseCase: sl(),
         observeAuthStateUseCase: sl(),
         sendPhoneOtpUseCase: sl(),
         verifyPhoneOtpUseCase: sl(),
@@ -123,14 +129,18 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<LoadOlderMessagesUseCase>(
       () => LoadOlderMessagesUseCase(sl()),
     )
+    ..registerLazySingleton<MarkConversationReadUseCase>(
+      () => MarkConversationReadUseCase(sl()),
+    )
     ..registerLazySingleton<SendMessageUseCase>(() => SendMessageUseCase(sl()))
     ..registerFactory<ChatCubit>(
       () => ChatCubit(
         watchMessagesUseCase: sl(),
         loadOlderMessagesUseCase: sl(),
+        markConversationReadUseCase: sl(),
         sendMessageUseCase: sl(),
         firebaseAuth: sl(),
       ),
     )
-    ..registerFactory<UsersCubit>(() => UsersCubit(sl()));
+    ..registerFactory<UsersCubit>(() => UsersCubit(sl(), sl()));
 }

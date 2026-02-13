@@ -129,6 +129,7 @@ class ChatLocalDataSource {
       ..senderId = message.senderId
       ..receiverId = message.receiverId
       ..text = message.text
+      ..imageUrl = message.imageUrl
       ..createdAt = message.createdAt;
     return entity;
   }
@@ -140,6 +141,7 @@ class ChatLocalDataSource {
       senderId: entity.senderId,
       receiverId: entity.receiverId,
       text: entity.text,
+      imageUrl: entity.imageUrl,
       createdAt: entity.createdAt,
     );
   }

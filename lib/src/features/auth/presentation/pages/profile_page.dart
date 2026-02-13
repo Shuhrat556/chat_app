@@ -1,11 +1,16 @@
+import 'dart:typed_data';
+
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:chat_app/src/core/utils/image_utils.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -17,16 +22,17 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _birthDateController = TextEditingController();
-  final _photoUrlController = TextEditingController();
-  final _bioController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _imagePicker = ImagePicker();
 
   AppUser? _lastSyncedUser;
   AuthStatus? _lastStatus;
-  DateTime? _birthDate;
+  String? _photoUrl;
+  Uint8List? _selectedPhotoBytes;
+  XFile? _selectedPhoto;
+  bool _isUploadingPhoto = false;
+  bool _profileSaveRequested = false;
+  bool _deleteRequested = false;
+  bool _signOutRequested = false;
 
   @override
   void initState() {
@@ -37,12 +43,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     _usernameController.dispose();
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _birthDateController.dispose();
-    _photoUrlController.dispose();
-    _bioController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -50,56 +50,143 @@ class _ProfilePageState extends State<ProfilePage> {
     if (user == null) return;
     _lastSyncedUser = user;
     _usernameController.text = user.username;
-    _firstNameController.text = user.firstName ?? '';
-    _lastNameController.text = user.lastName ?? '';
-    _birthDate = user.birthDate;
-    _birthDateController.text = user.birthDate != null
-        ? _formatDate(user.birthDate!)
-        : '';
-    _photoUrlController.text = user.photoUrl ?? '';
-    _bioController.text = user.bio ?? '';
-    _emailController.text = user.email;
+    _photoUrl = user.photoUrl;
+    _selectedPhoto = null;
+    _selectedPhotoBytes = null;
   }
 
-  Future<void> _pickBirthDate() async {
-    final now = DateTime.now();
-    final initialDate =
-        _birthDate ?? DateTime(now.year - 18, now.month, now.day);
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(now.year, now.month, now.day),
-    );
-    if (selected != null) {
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 1200,
+      );
+      if (picked == null || !mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
       setState(() {
-        _birthDate = selected;
-        _birthDateController.text = _formatDate(selected);
+        _selectedPhoto = picked;
+        _selectedPhotoBytes = bytes;
       });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_photoPickError())));
     }
   }
 
-  void _submit() {
+  void _clearPhotoSelection() {
+    setState(() {
+      _selectedPhoto = null;
+      _selectedPhotoBytes = null;
+      _photoUrl = null;
+    });
+  }
+
+  Future<String?> _uploadPhotoIfSelected() async {
+    if (_selectedPhoto == null) return _photoUrl;
+    final bytes = _selectedPhotoBytes ?? await _selectedPhoto!.readAsBytes();
+    final extension = _extensionFromName(_selectedPhoto!.name);
+    final fileId = const Uuid().v4();
+    final ref = FirebaseStorage.instance.ref(
+      'profile_photos/$fileId.$extension',
+    );
+    final metadata = SettableMetadata(
+      contentType: _mimeFromExtension(extension),
+    );
+    await ref.putData(bytes, metadata);
+    return ref.getDownloadURL();
+  }
+
+  String _extensionFromName(String fileName) {
+    final normalized = fileName.toLowerCase();
+    if (normalized.endsWith('.png')) return 'png';
+    if (normalized.endsWith('.webp')) return 'webp';
+    return 'jpg';
+  }
+
+  String _mimeFromExtension(String ext) {
+    return switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
+  }
+
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
-    final rawPhotoUrl = _photoUrlController.text.trim();
-    final photoUrl = safeNetworkImage(rawPhotoUrl) == null ? null : rawPhotoUrl;
+
+    setState(() => _isUploadingPhoto = true);
+    String? resolvedPhotoUrl;
+    try {
+      resolvedPhotoUrl = await _uploadPhotoIfSelected();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_photoUploadError())));
+      }
+      resolvedPhotoUrl = _photoUrl;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+      }
+    }
+
+    _profileSaveRequested = true;
+    _deleteRequested = false;
+    _signOutRequested = false;
+    if (!mounted) return;
     context.read<AuthBloc>().add(
       ProfileUpdateRequested(
         username: _usernameController.text.trim(),
-        firstName: _firstNameController.text.trim().isEmpty
-            ? null
-            : _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim().isEmpty
-            ? null
-            : _lastNameController.text.trim(),
-        birthDate: _birthDate,
-        bio: _bioController.text.trim().isEmpty
-            ? null
-            : _bioController.text.trim(),
-        photoUrl: photoUrl,
+        photoUrl: resolvedPhotoUrl,
       ),
     );
+  }
+
+  void _goToChangePassword() {
+    context.push('/change-password');
+  }
+
+  void _signOut() {
+    _profileSaveRequested = false;
+    _deleteRequested = false;
+    _signOutRequested = true;
+    context.read<AuthBloc>().add(const SignOutRequested());
+  }
+
+  String _photoPickError() {
+    final locale = Localizations.localeOf(context);
+    return switch (locale.languageCode) {
+      'uz' => 'Rasmni tanlashda xatolik',
+      'ru' => 'Ошибка при выборе фото',
+      'tg' => 'Хато ҳангоми интихоби акс',
+      _ => 'Failed to pick image',
+    };
+  }
+
+  String _photoUploadError() {
+    final locale = Localizations.localeOf(context);
+    return switch (locale.languageCode) {
+      'uz' => 'Rasmni yuklashda xatolik',
+      'ru' => 'Ошибка при загрузке фото',
+      'tg' => 'Хато ҳангоми боркунии акс',
+      _ => 'Failed to upload image',
+    };
+  }
+
+  String _changePasswordLabel() {
+    final locale = Localizations.localeOf(context);
+    return switch (locale.languageCode) {
+      'uz' => 'Parolni almashtirish',
+      'ru' => 'Сменить пароль',
+      'tg' => 'Иваз кардани парол',
+      _ => 'Change password',
+    };
   }
 
   void _confirmDelete(AppLocalizations t) {
@@ -134,6 +221,9 @@ class _ProfilePageState extends State<ProfilePage> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
+                _profileSaveRequested = false;
+                _signOutRequested = false;
+                _deleteRequested = true;
                 context.read<AuthBloc>().add(const DeleteAccountRequested());
               },
               child: Text(
@@ -149,8 +239,6 @@ class _ProfilePageState extends State<ProfilePage> {
       },
     );
   }
-
-  String _formatDate(DateTime date) => date.toIso8601String().split('T').first;
 
   @override
   Widget build(BuildContext context) {
@@ -176,24 +264,43 @@ class _ProfilePageState extends State<ProfilePage> {
               if (state.user != null && state.user != _lastSyncedUser) {
                 _fillFromUser(state.user);
               }
+
+              if (state.status == AuthStatus.unauthenticated) {
+                if (_deleteRequested) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(t.accountDeleted)),
+                  );
+                } else if (_signOutRequested) {
+                  messenger.showSnackBar(SnackBar(content: Text(t.signOut)));
+                }
+                _profileSaveRequested = false;
+                _deleteRequested = false;
+                _signOutRequested = false;
+                if (mounted) {
+                  context.go('/auth');
+                }
+                return;
+              }
+
               if (state.status == AuthStatus.failure && state.message != null) {
                 messenger.showSnackBar(SnackBar(content: Text(state.message!)));
-              } else if (_lastStatus == AuthStatus.loading &&
+                _profileSaveRequested = false;
+                _deleteRequested = false;
+                _signOutRequested = false;
+              } else if (_profileSaveRequested &&
+                  _lastStatus == AuthStatus.loading &&
                   state.status == AuthStatus.authenticated) {
                 messenger.showSnackBar(
                   SnackBar(content: Text(t.profileUpdated)),
                 );
-              } else if (_lastStatus == AuthStatus.loading &&
-                  state.status == AuthStatus.unauthenticated) {
-                messenger.showSnackBar(
-                  SnackBar(content: Text(t.accountDeleted)),
-                );
+                _profileSaveRequested = false;
               }
               _lastStatus = state.status;
             },
             builder: (context, state) {
               final user = state.user;
-              final isBusy = state.status == AuthStatus.loading;
+              final isBusy =
+                  state.status == AuthStatus.loading || _isUploadingPhoto;
 
               if (user == null) {
                 return Center(
@@ -214,8 +321,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 );
               }
 
-              final compact = MediaQuery.sizeOf(context).width < 390;
-
               return Stack(
                 children: [
                   Column(
@@ -225,6 +330,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         title: t.profileTitle,
                         subtitle: t.profileSubtitle,
                         isBusy: isBusy,
+                        onSignOut: _signOut,
                       ),
                       Expanded(
                         child: SingleChildScrollView(
@@ -307,109 +413,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                             },
                                           ),
                                           SizedBox(height: 8.h),
-                                          if (compact) ...[
-                                            _ProfileInputField(
-                                              controller: _firstNameController,
-                                              hint: t.firstName,
-                                              icon: Icons.badge,
-                                            ),
-                                            SizedBox(height: 8.h),
-                                            _ProfileInputField(
-                                              controller: _lastNameController,
-                                              hint: t.lastName,
-                                              icon: Icons.badge_outlined,
-                                            ),
-                                          ] else
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: _ProfileInputField(
-                                                    controller:
-                                                        _firstNameController,
-                                                    hint: t.firstName,
-                                                    icon: Icons.badge,
-                                                  ),
-                                                ),
-                                                SizedBox(width: 8.w),
-                                                Expanded(
-                                                  child: _ProfileInputField(
-                                                    controller:
-                                                        _lastNameController,
-                                                    hint: t.lastName,
-                                                    icon: Icons.badge_outlined,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          SizedBox(height: 8.h),
-                                          if (compact) ...[
-                                            _ProfileInputField(
-                                              controller: _birthDateController,
-                                              hint: t.birthDate,
-                                              icon: Icons.cake,
-                                              readOnly: true,
-                                              onTap: _pickBirthDate,
-                                              suffixIcon: Icon(
-                                                Icons.calendar_today_outlined,
-                                                color: Color(0xFF91A0C3),
-                                                size: 18.sp,
-                                              ),
-                                            ),
-                                            SizedBox(height: 8.h),
-                                            _ProfileInputField(
-                                              controller: _photoUrlController,
-                                              hint: t.photoUrl,
-                                              icon: Icons.image_outlined,
-                                              keyboardType: TextInputType.url,
-                                            ),
-                                          ] else
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: _ProfileInputField(
-                                                    controller:
-                                                        _birthDateController,
-                                                    hint: t.birthDate,
-                                                    icon: Icons.cake,
-                                                    readOnly: true,
-                                                    onTap: _pickBirthDate,
-                                                    suffixIcon: Icon(
-                                                      Icons
-                                                          .calendar_today_outlined,
-                                                      color: Color(0xFF91A0C3),
-                                                      size: 18.sp,
-                                                    ),
-                                                  ),
-                                                ),
-                                                SizedBox(width: 8.w),
-                                                Expanded(
-                                                  child: _ProfileInputField(
-                                                    controller:
-                                                        _photoUrlController,
-                                                    hint: t.photoUrl,
-                                                    icon: Icons.image_outlined,
-                                                    keyboardType:
-                                                        TextInputType.url,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          SizedBox(height: 8.h),
-                                          _ProfileInputField(
-                                            controller: _bioController,
-                                            hint: t.bio,
-                                            icon: Icons.info_outline,
-                                            maxLines: 3,
+                                          _ProfilePhotoPicker(
+                                            networkPhotoUrl: _photoUrl,
+                                            selectedBytes: _selectedPhotoBytes,
+                                            onPick: isBusy ? null : _pickPhoto,
+                                            onRemove: isBusy
+                                                ? null
+                                                : _clearPhotoSelection,
                                           ),
                                           SizedBox(height: 8.h),
-                                          _ProfileInputField(
-                                            controller: _emailController,
-                                            hint: t.email,
-                                            icon: Icons.mail_outline,
-                                            readOnly: true,
-                                            keyboardType:
-                                                TextInputType.emailAddress,
-                                          ),
                                         ],
                                       ),
                                     ),
@@ -419,6 +431,45 @@ class _ProfilePageState extends State<ProfilePage> {
                                       icon: Icons.save_outlined,
                                       onPressed: isBusy ? null : _submit,
                                       isLoading: isBusy,
+                                    ),
+                                    SizedBox(height: 10.h),
+                                    _ProfileSectionCard(
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          onPressed: isBusy
+                                              ? null
+                                              : _goToChangePassword,
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: const Color(
+                                              0xFFDAE4FF,
+                                            ),
+                                            side: BorderSide(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.22,
+                                              ),
+                                            ),
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 11.h,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12.r),
+                                            ),
+                                          ),
+                                          icon: Icon(
+                                            Icons.lock_reset_rounded,
+                                            size: 18.sp,
+                                          ),
+                                          label: Text(
+                                            _changePasswordLabel(),
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13.sp,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                     SizedBox(height: 10.h),
                                     _ProfileSectionCard(
@@ -534,12 +585,14 @@ class _ProfileTopBar extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.isBusy,
+    required this.onSignOut,
   });
 
   final AppUser user;
   final String title;
   final String subtitle;
   final bool isBusy;
+  final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -599,9 +652,7 @@ class _ProfileTopBar extends StatelessWidget {
             ),
           ),
           TextButton.icon(
-            onPressed: isBusy
-                ? null
-                : () => context.read<AuthBloc>().add(const SignOutRequested()),
+            onPressed: isBusy ? null : onSignOut,
             icon: Icon(
               Icons.logout,
               size: 16.sp,
@@ -667,34 +718,20 @@ class _ProfileInputField extends StatelessWidget {
     required this.hint,
     required this.icon,
     this.validator,
-    this.readOnly = false,
-    this.maxLines = 1,
-    this.keyboardType,
-    this.suffixIcon,
-    this.onTap,
   });
 
   final TextEditingController controller;
   final String hint;
   final IconData icon;
   final String? Function(String?)? validator;
-  final bool readOnly;
-  final int maxLines;
-  final TextInputType? keyboardType;
-  final Widget? suffixIcon;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
       validator: validator,
-      readOnly: readOnly,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      onTap: onTap,
       style: TextStyle(
-        color: readOnly ? const Color(0xFFB8C5E2) : Colors.white,
+        color: Colors.white,
         fontSize: 14.sp,
         fontWeight: FontWeight.w600,
       ),
@@ -706,10 +743,9 @@ class _ProfileInputField extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
         prefixIcon: Icon(icon, color: const Color(0xFF96A5C8), size: 19.sp),
-        suffixIcon: suffixIcon,
         filled: true,
         fillColor: const Color(0xFF132444),
-        constraints: maxLines == 1 ? BoxConstraints(minHeight: 48.h) : null,
+        constraints: BoxConstraints(minHeight: 48.h),
         contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14.r),
@@ -732,6 +768,128 @@ class _ProfileInputField extends StatelessWidget {
           borderSide: const BorderSide(color: Color(0xFFFF8EA0), width: 1.2),
         ),
       ),
+    );
+  }
+}
+
+class _ProfilePhotoPicker extends StatelessWidget {
+  const _ProfilePhotoPicker({
+    required this.networkPhotoUrl,
+    required this.selectedBytes,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  final String? networkPhotoUrl;
+  final Uint8List? selectedBytes;
+  final VoidCallback? onPick;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
+    final networkImage = safeNetworkImage(networkPhotoUrl);
+    final hasPhoto = selectedBytes != null || networkImage != null;
+
+    final pickLabel = switch (locale.languageCode) {
+      'uz' => hasPhoto ? 'Rasmni yangilash' : 'Rasm qo‘shish',
+      'ru' => hasPhoto ? 'Изменить фото' : 'Добавить фото',
+      'tg' => hasPhoto ? 'Иваз кардани акс' : 'Иловаи акс',
+      _ => hasPhoto ? 'Change photo' : 'Add photo',
+    };
+    final removeLabel = switch (locale.languageCode) {
+      'uz' => 'Rasmni olib tashlash',
+      'ru' => 'Удалить фото',
+      'tg' => 'Нест кардани акс',
+      _ => 'Remove photo',
+    };
+
+    return Row(
+      children: [
+        Container(
+          width: 62.w,
+          height: 62.w,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFF9D74FF).withValues(alpha: 0.65),
+              width: 2.w,
+            ),
+            color: const Color(0xFF1C2541),
+          ),
+          child: ClipOval(
+            child: selectedBytes != null
+                ? Image.memory(selectedBytes!, fit: BoxFit.cover)
+                : networkImage != null
+                ? Image(image: networkImage, fit: BoxFit.cover)
+                : Icon(
+                    Icons.person_outline_rounded,
+                    color: const Color(0xFFB8C2DE),
+                    size: 28.sp,
+                  ),
+          ),
+        ),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onPick,
+                icon: Icon(Icons.file_upload_outlined, size: 16.sp),
+                label: Text(
+                  pickLabel,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEAF0FF),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 8.h,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11.r),
+                  ),
+                ),
+              ),
+              if (hasPhoto)
+                OutlinedButton.icon(
+                  onPressed: onRemove,
+                  icon: Icon(Icons.close_rounded, size: 15.sp),
+                  label: Text(
+                    removeLabel,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFFB4BD),
+                    side: BorderSide(
+                      color: const Color(0xFFFF8A96).withValues(alpha: 0.45),
+                    ),
+                    backgroundColor: const Color(
+                      0xFFFF8A96,
+                    ).withValues(alpha: 0.08),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10.w,
+                      vertical: 8.h,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11.r),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:chat_app/src/core/di/service_locator.dart';
 import 'package:chat_app/src/core/utils/image_utils.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:chat_app/src/features/chat/domain/entities/chat_conversation_preview.dart';
 import 'package:chat_app/src/features/home/presentation/cubit/users_cubit.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +43,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _onRefresh() {
+    return _usersCubit.refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = context.watch<AuthBloc>().state;
@@ -79,7 +84,7 @@ class _HomePageState extends State<HomePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _headerTitle(locale, t),
+                              _headerTitle(currentUser, locale, t),
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -213,105 +218,163 @@ class _HomePageState extends State<HomePage> {
                             style: const TextStyle(color: Colors.white),
                           ),
                         )
-                      : BlocBuilder<UsersCubit, UsersState>(
-                          builder: (context, state) {
-                            if (state.status == UsersStatus.loading) {
-                              return const Center(
-                                child: CircularProgressIndicator(
-                                  color: Color(0xFF8D66FF),
-                                ),
-                              );
-                            }
-
-                            if (state.status == UsersStatus.error) {
-                              return Center(
-                                child: Text(
-                                  state.error ?? t.error,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14.sp,
-                                  ),
-                                ),
-                              );
-                            }
-
-                            final query = _searchController.text
-                                .trim()
-                                .toLowerCase();
-                            final users =
-                                state.users
-                                    .where((u) => u.id != currentUser.id)
-                                    .where((u) {
-                                      if (query.isEmpty) return true;
-                                      final fullText =
-                                          [
-                                                u.username,
-                                                u.email,
-                                                u.firstName,
-                                                u.lastName,
-                                                u.bio,
-                                              ]
-                                              .whereType<String>()
-                                              .join(' ')
-                                              .toLowerCase();
-                                      return fullText.contains(query);
-                                    })
-                                    .toList()
-                                  ..sort((a, b) {
-                                    final aOnline = a.isOnline == true;
-                                    final bOnline = b.isOnline == true;
-                                    if (aOnline != bOnline) {
-                                      return bOnline ? 1 : -1;
-                                    }
-                                    final aSeen =
-                                        a.lastSeen ??
-                                        DateTime.fromMillisecondsSinceEpoch(0);
-                                    final bSeen =
-                                        b.lastSeen ??
-                                        DateTime.fromMillisecondsSinceEpoch(0);
-                                    return bSeen.compareTo(aSeen);
-                                  });
-
-                            if (users.isEmpty) {
-                              final message = query.isNotEmpty
-                                  ? t.noUsers
-                                  : t.noUsers;
-                              return Center(
-                                child: Text(
-                                  message,
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 15.sp,
-                                  ),
-                                ),
-                              );
-                            }
-
-                            return ListView.builder(
-                              padding: EdgeInsets.fromLTRB(8.w, 4.h, 8.w, 18.h),
-                              itemCount: users.length,
-                              itemBuilder: (context, index) {
-                                final peer = users[index];
-                                final unread = peer.isOnline == true ? 1 : 0;
-                                final previewText = _previewText(
-                                  peer,
-                                  t,
-                                  locale,
+                      : RefreshIndicator(
+                          onRefresh: _onRefresh,
+                          color: const Color(0xFF8D66FF),
+                          backgroundColor: const Color(0xFF0F1B36),
+                          displacement: 24.h,
+                          child: BlocBuilder<UsersCubit, UsersState>(
+                            builder: (context, state) {
+                              if (state.status == UsersStatus.loading) {
+                                return ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  children: [
+                                    SizedBox(
+                                      height: 360.h,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          color: Color(0xFF8D66FF),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 );
+                              }
 
-                                return _ChatPreviewTile(
-                                  peer: peer,
-                                  preview: previewText,
-                                  timeLabel: _timeLabel(peer.lastSeen, locale),
-                                  unreadCount: unread,
-                                  onTap: () => context.push(
-                                    '/chat/${peer.id}',
-                                    extra: peer,
-                                  ),
+                              if (state.status == UsersStatus.error) {
+                                return ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  children: [
+                                    SizedBox(
+                                      height: 360.h,
+                                      child: Center(
+                                        child: Text(
+                                          state.error ?? t.error,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14.sp,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 );
-                              },
-                            );
-                          },
+                              }
+
+                              final query = _searchController.text
+                                  .trim()
+                                  .toLowerCase();
+                              final users =
+                                  state.users
+                                      .where((u) => u.id != currentUser.id)
+                                      .where((u) {
+                                        if (query.isEmpty) return true;
+                                        final fullText =
+                                            [
+                                                  u.username,
+                                                  u.email,
+                                                  u.firstName,
+                                                  u.lastName,
+                                                  u.bio,
+                                                ]
+                                                .whereType<String>()
+                                                .join(' ')
+                                                .toLowerCase();
+                                        return fullText.contains(query);
+                                      })
+                                      .toList()
+                                    ..sort((a, b) {
+                                      final aOnline = a.isOnline == true;
+                                      final bOnline = b.isOnline == true;
+                                      if (aOnline != bOnline) {
+                                        return bOnline ? 1 : -1;
+                                      }
+                                      final aSeen =
+                                          a.lastSeen ??
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            0,
+                                          );
+                                      final bSeen =
+                                          b.lastSeen ??
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            0,
+                                          );
+                                      return bSeen.compareTo(aSeen);
+                                    });
+
+                              if (users.isEmpty) {
+                                return ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  children: [
+                                    SizedBox(
+                                      height: 360.h,
+                                      child: Center(
+                                        child: Text(
+                                          t.noUsers,
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 15.sp,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: EdgeInsets.fromLTRB(
+                                  8.w,
+                                  4.h,
+                                  8.w,
+                                  18.h,
+                                ),
+                                itemCount: users.length,
+                                itemBuilder: (context, index) {
+                                  final peer = users[index];
+                                  final conversation =
+                                      state.conversationsByUserId[peer.id];
+                                  final unread =
+                                      conversation?.unreadCount ??
+                                      state.unreadByUserId[peer.id] ??
+                                      0;
+                                  final statusText = _statusText(
+                                    peer,
+                                    t,
+                                    locale,
+                                  );
+                                  final previewText = _previewText(
+                                    peer: peer,
+                                    conversation: conversation,
+                                    currentUserId: currentUser.id,
+                                    locale: locale,
+                                  );
+
+                                  return _ChatPreviewTile(
+                                    peer: peer,
+                                    statusText: statusText,
+                                    preview: previewText,
+                                    isOnline: peer.isOnline == true,
+                                    timeLabel: _timeLabel(
+                                      conversation?.lastMessageAt ??
+                                          peer.lastSeen,
+                                      locale,
+                                    ),
+                                    unreadCount: unread,
+                                    onTap: () => context.push(
+                                      '/chat/${peer.id}',
+                                      extra: peer,
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
                         ),
                 ),
               ],
@@ -337,7 +400,9 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
-  String _headerTitle(Locale locale, AppLocalizations t) {
+  String _headerTitle(AppUser? currentUser, Locale locale, AppLocalizations t) {
+    final username = currentUser?.username.trim() ?? '';
+    if (username.isNotEmpty) return username;
     return switch (locale.languageCode) {
       'uz' => 'Xabarlar',
       _ => t.chatsTitle,
@@ -364,10 +429,7 @@ class _HomePageState extends State<HomePage> {
     return DateFormat('HH:mm', locale.toLanguageTag()).format(lastSeen);
   }
 
-  String _previewText(AppUser peer, AppLocalizations t, Locale locale) {
-    final bio = peer.bio?.trim();
-    if (bio != null && bio.isNotEmpty) return bio;
-
+  String _statusText(AppUser peer, AppLocalizations t, Locale locale) {
     if (peer.isOnline == true) {
       return switch (locale.languageCode) {
         'uz' => 'Onlayn',
@@ -383,19 +445,57 @@ class _HomePageState extends State<HomePage> {
     final formatted = DateFormat('HH:mm', locale.toLanguageTag()).format(seen);
     return '${t.lastSeen}: $formatted';
   }
+
+  String _previewText({
+    required AppUser peer,
+    required ChatConversationPreview? conversation,
+    required String currentUserId,
+    required Locale locale,
+  }) {
+    final message = conversation?.lastMessage.trim() ?? '';
+    if (message.isNotEmpty) {
+      if (conversation?.lastMessageSenderId == currentUserId) {
+        return '${_youLabel(locale)}: $message';
+      }
+      return message;
+    }
+
+    final bio = peer.bio?.trim();
+    if (bio != null && bio.isNotEmpty) return bio;
+
+    return switch (locale.languageCode) {
+      'uz' => 'Hali xabar yo‘q',
+      'ru' => 'Пока нет сообщений',
+      'tg' => 'Ҳоло паём нест',
+      _ => 'No messages yet',
+    };
+  }
+
+  String _youLabel(Locale locale) {
+    return switch (locale.languageCode) {
+      'uz' => 'Siz',
+      'ru' => 'Вы',
+      'tg' => 'Шумо',
+      _ => 'You',
+    };
+  }
 }
 
 class _ChatPreviewTile extends StatelessWidget {
   const _ChatPreviewTile({
     required this.peer,
+    required this.statusText,
     required this.preview,
+    required this.isOnline,
     required this.timeLabel,
     required this.unreadCount,
     required this.onTap,
   });
 
   final AppUser peer;
+  final String statusText;
   final String preview;
+  final bool isOnline;
   final String timeLabel;
   final int unreadCount;
   final VoidCallback onTap;
@@ -433,7 +533,20 @@ class _ChatPreviewTile extends StatelessWidget {
                       fontSize: 14.sp,
                     ),
                   ),
-                  SizedBox(height: 4.h),
+                  SizedBox(height: 2.h),
+                  Text(
+                    statusText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isOnline
+                          ? const Color(0xFF00E47D)
+                          : const Color(0xFF7F8EAC),
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 3.h),
                   Text(
                     preview,
                     maxLines: 1,
@@ -478,11 +591,11 @@ class _ChatPreviewTile extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      unreadCount.toString(),
+                      unreadCount > 99 ? '99+' : unreadCount.toString(),
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
-                        fontSize: 16.sp,
+                        fontSize: unreadCount > 99 ? 12.sp : 16.sp,
                       ),
                     ),
                   ),

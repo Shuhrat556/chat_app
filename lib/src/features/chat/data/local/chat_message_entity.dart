@@ -20,4 +20,5 @@ class ChatMessageEntity {
   late String senderId;
   late String receiverId;
   late String text;
+  String? imageUrl;
 }

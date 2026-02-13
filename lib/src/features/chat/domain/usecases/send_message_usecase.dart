@@ -8,7 +8,12 @@ class SendMessageUseCase {
   Future<void> call({
     required String peerId,
     required String text,
+    String? imageUrl,
   }) {
-    return _repository.sendMessage(peerId: peerId, text: text);
+    return _repository.sendMessage(
+      peerId: peerId,
+      text: text,
+      imageUrl: imageUrl,
+    );
   }
 }

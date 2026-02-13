@@ -7,6 +7,7 @@ class ChatMessage extends Equatable {
     required this.senderId,
     required this.receiverId,
     required this.text,
+    this.imageUrl,
     required this.createdAt,
   });
 
@@ -15,6 +16,7 @@ class ChatMessage extends Equatable {
   final String senderId;
   final String receiverId;
   final String text;
+  final String? imageUrl;
   final DateTime createdAt;
 
   @override
@@ -24,6 +26,7 @@ class ChatMessage extends Equatable {
         senderId,
         receiverId,
         text,
+        imageUrl,
         createdAt,
       ];
 }

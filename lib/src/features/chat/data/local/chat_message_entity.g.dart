@@ -27,23 +27,28 @@ const ChatMessageEntitySchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
-    r'messageId': PropertySchema(
+    r'imageUrl': PropertySchema(
       id: 2,
+      name: r'imageUrl',
+      type: IsarType.string,
+    ),
+    r'messageId': PropertySchema(
+      id: 3,
       name: r'messageId',
       type: IsarType.string,
     ),
     r'receiverId': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'receiverId',
       type: IsarType.string,
     ),
     r'senderId': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'senderId',
       type: IsarType.string,
     ),
     r'text': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'text',
       type: IsarType.string,
     )
@@ -109,6 +114,12 @@ int _chatMessageEntityEstimateSize(
 ) {
   var bytesCount = offsets.last;
   bytesCount += 3 + object.conversationId.length * 3;
+  {
+    final value = object.imageUrl;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.messageId.length * 3;
   bytesCount += 3 + object.receiverId.length * 3;
   bytesCount += 3 + object.senderId.length * 3;
@@ -124,10 +135,11 @@ void _chatMessageEntitySerialize(
 ) {
   writer.writeString(offsets[0], object.conversationId);
   writer.writeDateTime(offsets[1], object.createdAt);
-  writer.writeString(offsets[2], object.messageId);
-  writer.writeString(offsets[3], object.receiverId);
-  writer.writeString(offsets[4], object.senderId);
-  writer.writeString(offsets[5], object.text);
+  writer.writeString(offsets[2], object.imageUrl);
+  writer.writeString(offsets[3], object.messageId);
+  writer.writeString(offsets[4], object.receiverId);
+  writer.writeString(offsets[5], object.senderId);
+  writer.writeString(offsets[6], object.text);
 }
 
 ChatMessageEntity _chatMessageEntityDeserialize(
@@ -139,11 +151,12 @@ ChatMessageEntity _chatMessageEntityDeserialize(
   final object = ChatMessageEntity();
   object.conversationId = reader.readString(offsets[0]);
   object.createdAt = reader.readDateTime(offsets[1]);
+  object.imageUrl = reader.readStringOrNull(offsets[2]);
   object.isarId = id;
-  object.messageId = reader.readString(offsets[2]);
-  object.receiverId = reader.readString(offsets[3]);
-  object.senderId = reader.readString(offsets[4]);
-  object.text = reader.readString(offsets[5]);
+  object.messageId = reader.readString(offsets[3]);
+  object.receiverId = reader.readString(offsets[4]);
+  object.senderId = reader.readString(offsets[5]);
+  object.text = reader.readString(offsets[6]);
   return object;
 }
 
@@ -159,12 +172,14 @@ P _chatMessageEntityDeserializeProp<P>(
     case 1:
       return (reader.readDateTime(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
       return (reader.readString(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -703,6 +718,160 @@ extension ChatMessageEntityQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'imageUrl',
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'imageUrl',
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'imageUrl',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'imageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'imageUrl',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'imageUrl',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+      imageUrlIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'imageUrl',
+        value: '',
       ));
     });
   }
@@ -1345,6 +1514,20 @@ extension ChatMessageEntityQuerySortBy
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+      sortByImageUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'imageUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+      sortByImageUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'imageUrl', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
       sortByMessageId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'messageId', Sort.asc);
@@ -1428,6 +1611,20 @@ extension ChatMessageEntityQuerySortThenBy
       thenByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+      thenByImageUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'imageUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+      thenByImageUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'imageUrl', Sort.desc);
     });
   }
 
@@ -1520,6 +1717,13 @@ extension ChatMessageEntityQueryWhereDistinct
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
+      distinctByImageUrl({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'imageUrl', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
       distinctByMessageId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'messageId', caseSensitive: caseSensitive);
@@ -1567,6 +1771,13 @@ extension ChatMessageEntityQueryProperty
       createdAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'createdAt');
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, String?, QQueryOperations>
+      imageUrlProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'imageUrl');
     });
   }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/observe_auth_state_usecase.dart';
+import 'package:chat_app/src/features/auth/domain/usecases/change_password_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_with_google_usecase.dart';
 import 'package:chat_app/src/features/auth/domain/usecases/sign_in_with_apple_usecase.dart';
@@ -29,6 +30,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required SignUpUseCase signUpUseCase,
     required SignOutUseCase signOutUseCase,
     required SendPasswordResetUseCase sendPasswordResetUseCase,
+    required ChangePasswordUseCase changePasswordUseCase,
     required ObserveAuthStateUseCase observeAuthStateUseCase,
     required SendPhoneOtpUseCase sendPhoneOtpUseCase,
     required VerifyPhoneOtpUseCase verifyPhoneOtpUseCase,
@@ -41,6 +43,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
        _signUpUseCase = signUpUseCase,
        _signOutUseCase = signOutUseCase,
        _sendPasswordResetUseCase = sendPasswordResetUseCase,
+       _changePasswordUseCase = changePasswordUseCase,
        _observeAuthStateUseCase = observeAuthStateUseCase,
        _sendPhoneOtpUseCase = sendPhoneOtpUseCase,
        _verifyPhoneOtpUseCase = verifyPhoneOtpUseCase,
@@ -57,6 +60,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<GoogleSignInRequested>(_onGoogleSignIn);
     on<AppleSignInRequested>(_onAppleSignIn);
     on<PasswordResetRequested>(_onPasswordReset);
+    on<ChangePasswordRequested>(_onChangePassword);
     on<PhoneOtpRequested>(_onPhoneOtpRequested);
     on<PhoneOtpSubmitted>(_onPhoneOtpSubmitted);
     on<ProfileUpdateRequested>(_onProfileUpdate);
@@ -69,12 +73,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final SignUpUseCase _signUpUseCase;
   final SignOutUseCase _signOutUseCase;
   final SendPasswordResetUseCase _sendPasswordResetUseCase;
+  final ChangePasswordUseCase _changePasswordUseCase;
   final ObserveAuthStateUseCase _observeAuthStateUseCase;
   final SendPhoneOtpUseCase _sendPhoneOtpUseCase;
   final VerifyPhoneOtpUseCase _verifyPhoneOtpUseCase;
   final UpdateProfileUseCase _updateProfileUseCase;
   final DeleteAccountUseCase _deleteAccountUseCase;
   final TokenSyncService _tokenSyncService;
+  String? _lastNotificationSyncedUserId;
 
   StreamSubscription<AppUser?>? _authSub;
 
@@ -88,9 +94,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   void _onStatusChanged(AuthStatusChanged event, Emitter<AuthState> emit) {
     final user = event.user;
     if (user == null) {
+      _lastNotificationSyncedUserId = null;
       emit(state.copyWith(status: AuthStatus.unauthenticated, user: null));
     } else {
       emit(state.copyWith(status: AuthStatus.authenticated, user: user));
+      if (_lastNotificationSyncedUserId != user.id) {
+        _lastNotificationSyncedUserId = user.id;
+        unawaited(_enableNotificationsAndSyncToken());
+      }
     }
   }
 
@@ -152,8 +163,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     SignOutRequested event,
     Emitter<AuthState> emit,
   ) async {
-    await _signOutUseCase();
-    emit(state.copyWith(status: AuthStatus.unauthenticated, user: null));
+    emit(state.copyWith(status: AuthStatus.loading, message: null));
+    try {
+      await _signOutUseCase();
+      emit(state.copyWith(status: AuthStatus.unauthenticated, user: null));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          status: AuthStatus.failure,
+          message: _extractErrorMessage(e),
+        ),
+      );
+    }
   }
 
   Future<void> _onGoogleSignIn(
@@ -202,6 +223,43 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       await _sendPasswordResetUseCase(email: event.email);
       emit(state.copyWith(status: AuthStatus.initial, message: 'reset_sent'));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          status: AuthStatus.failure,
+          message: _extractErrorMessage(e),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onChangePassword(
+    ChangePasswordRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    if (event.newPassword.length < 8) {
+      emit(
+        state.copyWith(
+          status: AuthStatus.failure,
+          message: 'Parol kamida 8 ta belgidan iborat bo\'lishi kerak',
+        ),
+      );
+      return;
+    }
+
+    emit(state.copyWith(status: AuthStatus.loading, message: null));
+    try {
+      await _changePasswordUseCase(
+        currentPassword: event.currentPassword,
+        newPassword: event.newPassword,
+      );
+      emit(
+        state.copyWith(
+          status: AuthStatus.authenticated,
+          user: state.user,
+          message: 'password_changed',
+        ),
+      );
     } catch (e) {
       emit(
         state.copyWith(

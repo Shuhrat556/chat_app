@@ -283,6 +283,17 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    return _authDataSource.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+  }
+
+  @override
   Future<AppUser> updateProfile({
     required String username,
     String? firstName,
@@ -299,7 +310,12 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    final current = await _userRemoteDataSource.fetchUser(firebaseUser.uid);
+    AppUser? current;
+    try {
+      current = await _userRemoteDataSource.fetchUser(firebaseUser.uid);
+    } catch (_) {
+      // Continue with Firebase-auth fallback values below.
+    }
     final currentUsername = current?.username ?? firebaseUser.displayName ?? '';
     final normalizedUsername = username.trim();
     if (normalizedUsername.isEmpty) {
@@ -309,7 +325,8 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    if (normalizedUsername != currentUsername) {
+    if (normalizedUsername.toLowerCase() !=
+        currentUsername.trim().toLowerCase()) {
       try {
         await _userRemoteDataSource.updateUsernameReservation(
           previousUsername: currentUsername.isEmpty ? null : currentUsername,
