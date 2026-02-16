@@ -10,6 +10,9 @@ class ChatMessageModel extends ChatMessage {
     required super.text,
     super.imageUrl,
     required super.createdAt,
+    super.status = MessageStatus.sent,
+    super.deliveredAt,
+    super.readAt,
   });
 
   Map<String, dynamic> toMap({bool useServerTimestamp = false}) => {
@@ -22,6 +25,11 @@ class ChatMessageModel extends ChatMessage {
     'createdAt': useServerTimestamp
         ? FieldValue.serverTimestamp()
         : Timestamp.fromDate(createdAt),
+    'status': status.name,
+    'deliveredAt': deliveredAt != null
+        ? Timestamp.fromDate(deliveredAt!)
+        : null,
+    'readAt': readAt != null ? Timestamp.fromDate(readAt!) : null,
   };
 
   factory ChatMessageModel.fromFirestore(
@@ -44,6 +52,37 @@ class ChatMessageModel extends ChatMessage {
 
     final inferredConversationId = doc.reference.parent.parent?.id ?? '';
 
+    // Parse message status
+    MessageStatus status = MessageStatus.sent;
+    final statusRaw = data['status'] as String?;
+    if (statusRaw != null) {
+      try {
+        status = MessageStatus.values.firstWhere(
+          (e) => e.name == statusRaw,
+          orElse: () => MessageStatus.sent,
+        );
+      } catch (_) {
+        status = MessageStatus.sent;
+      }
+    }
+
+    // Parse timestamps
+    DateTime? deliveredAt;
+    final deliveredRaw = data['deliveredAt'];
+    if (deliveredRaw is Timestamp) {
+      deliveredAt = deliveredRaw.toDate();
+    } else if (deliveredRaw is int) {
+      deliveredAt = DateTime.fromMillisecondsSinceEpoch(deliveredRaw);
+    }
+
+    DateTime? readAt;
+    final readRaw = data['readAt'];
+    if (readRaw is Timestamp) {
+      readAt = readRaw.toDate();
+    } else if (readRaw is int) {
+      readAt = DateTime.fromMillisecondsSinceEpoch(readRaw);
+    }
+
     return ChatMessageModel(
       id: data['id'] as String? ?? doc.id,
       conversationId:
@@ -65,6 +104,28 @@ class ChatMessageModel extends ChatMessage {
           '',
       imageUrl: data['imageUrl'] as String?,
       createdAt: createdAt,
+      status: status,
+      deliveredAt: deliveredAt,
+      readAt: readAt,
+    );
+  }
+
+  ChatMessageModel copyWithStatus({
+    MessageStatus? status,
+    DateTime? deliveredAt,
+    DateTime? readAt,
+  }) {
+    return ChatMessageModel(
+      id: id,
+      conversationId: conversationId,
+      senderId: senderId,
+      receiverId: receiverId,
+      text: text,
+      imageUrl: imageUrl,
+      createdAt: createdAt,
+      status: status ?? this.status,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
+      readAt: readAt ?? this.readAt,
     );
   }
 }

@@ -11,6 +11,7 @@ class ChatState extends Equatable {
     this.currentUserId,
     this.hasMore = true,
     this.isLoadingMore = false,
+    this.isTyping = false,
   });
 
   final ChatStatus status;
@@ -20,6 +21,7 @@ class ChatState extends Equatable {
   final String? currentUserId;
   final bool hasMore;
   final bool isLoadingMore;
+  final bool isTyping;
 
   ChatState copyWith({
     ChatStatus? status,
@@ -29,6 +31,7 @@ class ChatState extends Equatable {
     String? currentUserId,
     bool? hasMore,
     bool? isLoadingMore,
+    bool? isTyping,
   }) {
     return ChatState(
       status: status ?? this.status,
@@ -38,6 +41,7 @@ class ChatState extends Equatable {
       currentUserId: currentUserId ?? this.currentUserId,
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      isTyping: isTyping ?? this.isTyping,
     );
   }
 
@@ -50,5 +54,6 @@ class ChatState extends Equatable {
     currentUserId,
     hasMore,
     isLoadingMore,
+    isTyping,
   ];
 }

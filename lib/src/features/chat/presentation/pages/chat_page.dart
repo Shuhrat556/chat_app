@@ -82,6 +82,13 @@ class _ChatPageState extends State<ChatPage>
     if (hasText != _hasTypedText && mounted) {
       setState(() => _hasTypedText = hasText);
     }
+
+    // Typing indicator
+    if (hasText) {
+      context.read<ChatCubit>().onTypingStarted();
+    } else {
+      context.read<ChatCubit>().onTypingStopped();
+    }
   }
 
   void _send(BuildContext ctx) {
@@ -372,6 +379,7 @@ class _ChatPageState extends State<ChatPage>
                   final statusText = _statusText(
                     livePeer,
                     presence,
+                    state.isTyping,
                     l10n,
                     locale,
                   );
@@ -551,9 +559,14 @@ class _ChatPageState extends State<ChatPage>
   String _statusText(
     AppUser peer,
     PresenceStatus? presence,
+    bool isTyping,
     AppLocalizations t,
     Locale locale,
   ) {
+    if (isTyping) {
+      return 'yozmoqda...';
+    }
+
     final effectiveOnline = presence?.isOnline ?? peer.isOnline == true;
     final lastSeen = presence?.lastSeen ?? peer.lastSeen;
 
@@ -1148,8 +1161,7 @@ class _MessageBubble extends StatelessWidget {
           ),
         ),
         if (isMine) SizedBox(width: 3.w),
-        if (isMine)
-          Icon(Icons.done_all_rounded, color: Color(0xFFA87EFF), size: 14.sp),
+        if (isMine) _buildStatusIcon(message.status),
       ],
     );
 
@@ -1169,6 +1181,19 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.sending:
+        return Icon(Icons.schedule, color: Color(0xFF8190B0), size: 14.sp);
+      case MessageStatus.sent:
+        return Icon(Icons.done, color: Color(0xFF8190B0), size: 14.sp);
+      case MessageStatus.delivered:
+        return Icon(Icons.done_all, color: Color(0xFF8190B0), size: 14.sp);
+      case MessageStatus.read:
+        return Icon(Icons.done_all, color: Color(0xFFA87EFF), size: 14.sp);
+    }
   }
 }
 

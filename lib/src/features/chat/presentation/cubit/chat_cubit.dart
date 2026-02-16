@@ -39,6 +39,8 @@ class ChatCubit extends Cubit<ChatState> {
   bool _hasMore = true;
   bool _isLoadingMore = false;
   String? _lastHandledIncomingId;
+  Timer? _typingTimer;
+  bool _isTyping = false;
 
   void start(AppUser peer) {
     final currentUserId = _firebaseAuth.currentUser?.uid;
@@ -46,6 +48,7 @@ class ChatCubit extends Cubit<ChatState> {
     _hasMore = true;
     _isLoadingMore = false;
     _lastHandledIncomingId = null;
+    _isTyping = false;
     emit(
       state.copyWith(
         peer: peer,
@@ -54,6 +57,7 @@ class ChatCubit extends Cubit<ChatState> {
         error: null,
         hasMore: true,
         isLoadingMore: false,
+        isTyping: false,
       ),
     );
     unawaited(_markConversationReadUseCase(peerId: peer.id));
@@ -74,6 +78,7 @@ class ChatCubit extends Cubit<ChatState> {
             error: null,
             hasMore: _hasMore,
             isLoadingMore: _isLoadingMore,
+            isTyping: _isTyping,
           ),
         );
 
@@ -92,6 +97,28 @@ class ChatCubit extends Cubit<ChatState> {
         state.copyWith(status: ChatStatus.error, error: error.toString()),
       ),
     );
+  }
+
+  void onTypingStarted() {
+    _isTyping = true;
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 3), () {
+      _isTyping = false;
+      _emitTypingState();
+    });
+    _emitTypingState();
+  }
+
+  void onTypingStopped() {
+    _isTyping = false;
+    _typingTimer?.cancel();
+    _emitTypingState();
+  }
+
+  void _emitTypingState() {
+    if (state.peer != null) {
+      emit(state.copyWith(isTyping: _isTyping));
+    }
   }
 
   Future<void> loadOlder() async {
@@ -132,6 +159,7 @@ class ChatCubit extends Cubit<ChatState> {
           error: null,
           hasMore: _hasMore,
           isLoadingMore: false,
+          isTyping: _isTyping,
         ),
       );
     } catch (error) {
@@ -186,6 +214,7 @@ class ChatCubit extends Cubit<ChatState> {
   @override
   Future<void> close() {
     _sub?.cancel();
+    _typingTimer?.cancel();
     return super.close();
   }
 }

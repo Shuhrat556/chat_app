@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chat_app/src/features/chat/data/models/chat_message_model.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_conversation_preview.dart';
+import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatRemoteDataSource {
@@ -120,6 +121,85 @@ class ChatRemoteDataSource {
     // Use client timestamp for createdAt so the new message appears instantly
     // in the current query; updatedAt still uses server time on conversation.
     await docRef.set(message.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> updateMessageStatus({
+    required String conversationId,
+    required String messageId,
+    required MessageStatus status,
+    DateTime? deliveredAt,
+    DateTime? readAt,
+  }) async {
+    final docRef = _firestore
+        .collection(_conversationCollection)
+        .doc(conversationId)
+        .collection('messages')
+        .doc(messageId);
+
+    final updateData = <String, dynamic>{'status': status.name};
+
+    if (deliveredAt != null) {
+      updateData['deliveredAt'] = Timestamp.fromDate(deliveredAt);
+    }
+    if (readAt != null) {
+      updateData['readAt'] = Timestamp.fromDate(readAt);
+    }
+
+    await docRef.update(updateData);
+  }
+
+  Future<void> markMessagesAsDelivered({
+    required String conversationId,
+    required String receiverId,
+  }) async {
+    final messagesRef = _firestore
+        .collection(_conversationCollection)
+        .doc(conversationId)
+        .collection('messages');
+
+    final snapshot = await messagesRef
+        .where('receiverId', isEqualTo: receiverId)
+        .where('status', whereIn: ['sent', 'sending'])
+        .get();
+
+    final batch = _firestore.batch();
+    final now = DateTime.now();
+
+    for (final doc in snapshot.docs) {
+      batch.update(doc.reference, {
+        'status': 'delivered',
+        'deliveredAt': Timestamp.fromDate(now),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> markMessagesAsRead({
+    required String conversationId,
+    required String receiverId,
+  }) async {
+    final messagesRef = _firestore
+        .collection(_conversationCollection)
+        .doc(conversationId)
+        .collection('messages');
+
+    final snapshot = await messagesRef
+        .where('receiverId', isEqualTo: receiverId)
+        .where('status', whereIn: ['sent', 'delivered'])
+        .get();
+
+    final batch = _firestore.batch();
+    final now = DateTime.now();
+
+    for (final doc in snapshot.docs) {
+      batch.update(doc.reference, {
+        'status': 'read',
+        'readAt': Timestamp.fromDate(now),
+      });
+    }
+
+    await batch.commit();
   }
 
   Future<void> markConversationRead({
