@@ -14,18 +14,18 @@ class PresenceRemoteDataSource {
     if (uid == null) return;
     final ref = _userRef(uid);
 
-    await ref.set({'state': 'online', 'lastSeen': ServerValue.timestamp});
-
-    ref.onDisconnect().set({
+    await ref.onDisconnect().set({
       'state': 'offline',
       'lastSeen': ServerValue.timestamp,
     });
+    await ref.set({'state': 'online', 'lastSeen': ServerValue.timestamp});
   }
 
   Future<void> setOffline() async {
     final uid = _firebaseAuth.currentUser?.uid;
     if (uid == null) return;
     final ref = _userRef(uid);
+    await ref.onDisconnect().cancel();
     await ref.set({'state': 'offline', 'lastSeen': ServerValue.timestamp});
   }
 
@@ -35,8 +35,8 @@ class PresenceRemoteDataSource {
     final ref = _database.ref('typing/$conversationId/$uid');
 
     if (isTyping) {
+      await ref.onDisconnect().remove();
       await ref.set(ServerValue.timestamp);
-      ref.onDisconnect().remove();
     } else {
       await ref.remove();
     }
@@ -46,13 +46,16 @@ class PresenceRemoteDataSource {
     return _userRef(uid).onValue.map((event) {
       final data = event.snapshot.value;
       if (data is Map) {
-        final state = data['state'] as String?;
+        final stateRaw = data['state']?.toString().toLowerCase().trim();
         final ts = data['lastSeen'];
-        DateTime? lastSeen;
-        if (ts is int) {
-          lastSeen = DateTime.fromMillisecondsSinceEpoch(ts);
-        }
-        return PresenceStatus(isOnline: state == 'online', lastSeen: lastSeen);
+        final millis = _parseMillis(ts);
+        final lastSeen = millis == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(millis);
+        return PresenceStatus(
+          isOnline: stateRaw == 'online',
+          lastSeen: lastSeen,
+        );
       }
       return const PresenceStatus(isOnline: false, lastSeen: null);
     });
@@ -65,12 +68,23 @@ class PresenceRemoteDataSource {
       if (data is Map) {
         for (final entry in data.entries) {
           if (entry.value != null) {
-            typingUsers.add(entry.key as String);
+            final key = entry.key.toString();
+            if (key.isNotEmpty) {
+              typingUsers.add(key);
+            }
           }
         }
       }
       return typingUsers;
     });
+  }
+
+  int? _parseMillis(Object? raw) {
+    if (raw is int) return raw;
+    if (raw is double) return raw.toInt();
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
   }
 }
 

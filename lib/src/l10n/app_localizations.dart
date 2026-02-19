@@ -84,6 +84,26 @@ class AppLocalizations {
       'last_seen': 'Last seen',
       'input_hint': 'Type a message...',
       'no_messages': 'No messages yet',
+      'settings_title': 'Settings',
+      'appearance': 'Appearance',
+      'theme_system': 'System',
+      'theme_light': 'Light',
+      'theme_dark': 'Dark',
+      'privacy_settings': 'Privacy',
+      'read_receipts_title': 'Read receipts',
+      'read_receipts_subtitle': 'Let others see when you read messages',
+      'secret_chat_default_title': 'Secret timer default',
+      'secret_chat_default_subtitle':
+          'Use 30s timer by default for new messages',
+      'sticker_pack_title': 'Sticker pack',
+      'sticker_pack_subtitle': 'Manage your personal sticker pack',
+      'sticker_pack_hint': 'My Stickers',
+      'saved': 'Saved',
+      'add_sticker': 'Add sticker',
+      'no_stickers_yet': 'No stickers yet',
+      'username_min_5': 'At least 5 characters',
+      'username_max_20': 'At most 20 characters',
+      'username_latin_only': 'Only latin letters allowed',
     },
     'uz': {
       'welcome': 'Xush kelibsiz',
@@ -151,6 +171,27 @@ class AppLocalizations {
       'last_seen': 'Oxirgi kirishi',
       'input_hint': 'Xabar yozing...',
       'no_messages': 'Hozircha xabarlar yo‘q',
+      'settings_title': 'Sozlamalar',
+      'appearance': 'Ko‘rinish',
+      'theme_system': 'Tizim',
+      'theme_light': 'Yorug‘',
+      'theme_dark': 'Qorong‘i',
+      'privacy_settings': 'Maxfiylik',
+      'read_receipts_title': 'O‘qilgan belgilari',
+      'read_receipts_subtitle':
+          'Boshqalar xabaringizni qachon o‘qiganingizni ko‘rishi mumkin',
+      'secret_chat_default_title': 'Secret timer default',
+      'secret_chat_default_subtitle':
+          'Yangi xabarlar uchun avtomatik 30 soniya timer ishlatilsin',
+      'sticker_pack_title': 'Sticker pack',
+      'sticker_pack_subtitle': 'Shaxsiy sticker pack boshqaruvi',
+      'sticker_pack_hint': 'Mening stickerlarim',
+      'saved': 'Saqlandi',
+      'add_sticker': 'Sticker qo‘shish',
+      'no_stickers_yet': 'Hali sticker yo‘q',
+      'username_min_5': 'Kamida 5 ta belgi',
+      'username_max_20': 'Ko‘pi bilan 20 ta belgi',
+      'username_latin_only': 'Faqat lotin harflari ruxsat',
     },
     'ru': {
       'welcome': 'Добро пожаловать',
@@ -218,6 +259,26 @@ class AppLocalizations {
       'last_seen': 'Был(а)',
       'input_hint': 'Напишите сообщение...',
       'no_messages': 'Пока нет сообщений',
+      'settings_title': 'Настройки',
+      'appearance': 'Оформление',
+      'theme_system': 'Системная',
+      'theme_light': 'Светлая',
+      'theme_dark': 'Тёмная',
+      'privacy_settings': 'Приватность',
+      'read_receipts_title': 'Отчеты о прочтении',
+      'read_receipts_subtitle': 'Показывать, когда вы прочитали сообщение',
+      'secret_chat_default_title': 'Secret timer default',
+      'secret_chat_default_subtitle':
+          'Для новых сообщений по умолчанию использовать 30 секунд',
+      'sticker_pack_title': 'Стикерпак',
+      'sticker_pack_subtitle': 'Управление личным стикерпаком',
+      'sticker_pack_hint': 'Мои стикеры',
+      'saved': 'Сохранено',
+      'add_sticker': 'Добавить стикер',
+      'no_stickers_yet': 'Стикеров пока нет',
+      'username_min_5': 'Минимум 5 символов',
+      'username_max_20': 'Максимум 20 символов',
+      'username_latin_only': 'Разрешены только латинские буквы',
     },
     'tg': {
       'welcome': 'Хуш омадед',
@@ -285,6 +346,26 @@ class AppLocalizations {
       'last_seen': 'Охирин дидан',
       'input_hint': 'Паём нависед...',
       'no_messages': 'Ҳоло паём нест',
+      'settings_title': 'Танзимот',
+      'appearance': 'Намуд',
+      'theme_system': 'Системавӣ',
+      'theme_light': 'Равшан',
+      'theme_dark': 'Торик',
+      'privacy_settings': 'Махфият',
+      'read_receipts_title': 'Тасдиқи хондан',
+      'read_receipts_subtitle': 'Дигарон мебинанд, ки шумо паёмро кай хондаед',
+      'secret_chat_default_title': 'Secret timer default',
+      'secret_chat_default_subtitle':
+          'Барои паёмҳои нав пешфарз 30 сония истифода шавад',
+      'sticker_pack_title': 'Стикерпак',
+      'sticker_pack_subtitle': 'Идоракунии стикерпак',
+      'sticker_pack_hint': 'Стикерҳои ман',
+      'saved': 'Сабт шуд',
+      'add_sticker': 'Иловаи стикер',
+      'no_stickers_yet': 'Ҳоло стикер нест',
+      'username_min_5': 'Камаш 5 аломат',
+      'username_max_20': 'Зиёда аз 20 аломат нашавад',
+      'username_latin_only': 'Фақат ҳарфҳои лотинӣ иҷозат аст',
     },
   };
 
@@ -358,6 +439,25 @@ class AppLocalizations {
   String get lastSeen => _t('last_seen');
   String get inputHint => _t('input_hint');
   String get noMessages => _t('no_messages');
+  String get settingsTitle => _t('settings_title');
+  String get appearance => _t('appearance');
+  String get themeSystem => _t('theme_system');
+  String get themeLight => _t('theme_light');
+  String get themeDark => _t('theme_dark');
+  String get privacySettings => _t('privacy_settings');
+  String get readReceiptsTitle => _t('read_receipts_title');
+  String get readReceiptsSubtitle => _t('read_receipts_subtitle');
+  String get secretChatDefaultTitle => _t('secret_chat_default_title');
+  String get secretChatDefaultSubtitle => _t('secret_chat_default_subtitle');
+  String get stickerPackTitle => _t('sticker_pack_title');
+  String get stickerPackSubtitle => _t('sticker_pack_subtitle');
+  String get stickerPackHint => _t('sticker_pack_hint');
+  String get saved => _t('saved');
+  String get addSticker => _t('add_sticker');
+  String get noStickersYet => _t('no_stickers_yet');
+  String get usernameMin5 => _t('username_min_5');
+  String get usernameMax20 => _t('username_max_20');
+  String get usernameLatinOnly => _t('username_latin_only');
 }
 
 class AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

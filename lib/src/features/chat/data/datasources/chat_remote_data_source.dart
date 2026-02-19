@@ -161,6 +161,7 @@ class ChatRemoteDataSource {
         .where('receiverId', isEqualTo: receiverId)
         .where('status', whereIn: ['sent', 'sending'])
         .get();
+    if (snapshot.docs.isEmpty) return;
 
     final batch = _firestore.batch();
     final now = DateTime.now();
@@ -186,8 +187,9 @@ class ChatRemoteDataSource {
 
     final snapshot = await messagesRef
         .where('receiverId', isEqualTo: receiverId)
-        .where('status', whereIn: ['sent', 'delivered'])
+        .where('status', whereIn: ['sent', 'sending', 'delivered'])
         .get();
+    if (snapshot.docs.isEmpty) return;
 
     final batch = _firestore.batch();
     final now = DateTime.now();

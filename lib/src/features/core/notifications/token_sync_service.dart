@@ -13,6 +13,7 @@ class TokenSyncService {
     final uid = _firebaseAuth.currentUser?.uid;
     if (uid == null) return;
     final token = await NotificationService.getToken();
-    await _remoteDataSource.saveFcmToken(userId: uid, fcmToken: token);
+    if (token == null || token.trim().isEmpty) return;
+    await _remoteDataSource.saveFcmToken(userId: uid, fcmToken: token.trim());
   }
 }

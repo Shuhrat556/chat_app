@@ -7,6 +7,8 @@ import 'package:chat_app/src/features/auth/presentation/pages/sign_in_page.dart'
 import 'package:chat_app/src/features/auth/presentation/pages/sign_up_page.dart';
 import 'package:chat_app/src/features/chat/presentation/pages/chat_page.dart';
 import 'package:chat_app/src/features/home/presentation/pages/home_page.dart';
+import 'package:chat_app/src/features/settings/presentation/pages/settings_page.dart';
+import 'package:chat_app/src/features/stickers/presentation/sticker_pack_page.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -76,6 +78,16 @@ class AppRouter {
         path: '/change-password',
         pageBuilder: (context, state) =>
             _buildPage(key: state.pageKey, child: const ChangePasswordPage()),
+      ),
+      GoRoute(
+        path: '/settings',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const SettingsPage()),
+      ),
+      GoRoute(
+        path: '/stickers',
+        pageBuilder: (context, state) =>
+            _buildPage(key: state.pageKey, child: const StickerPackPage()),
       ),
     ],
   );

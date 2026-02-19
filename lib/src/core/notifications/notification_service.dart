@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -26,6 +27,10 @@ class NotificationService {
   static bool _backgroundHandlerRegistered = false;
   static bool _localInitialized = false;
   static StreamSubscription<RemoteMessage>? _foregroundSub;
+  static const _tokenRetries = 5;
+  static const _tokenRetryDelay = Duration(milliseconds: 800);
+  static const _apnsRetries = 6;
+  static const _apnsRetryDelay = Duration(milliseconds: 600);
 
   static Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
 
@@ -60,7 +65,25 @@ class NotificationService {
 
   static Future<String?> getToken() async {
     try {
-      return _messaging.getToken();
+      final isApplePlatform =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS);
+      if (isApplePlatform) {
+        await _waitForApnsToken();
+      }
+
+      for (var attempt = 0; attempt < _tokenRetries; attempt++) {
+        final token = await _messaging.getToken();
+        final normalized = token?.trim();
+        if (normalized != null && normalized.isNotEmpty) {
+          return normalized;
+        }
+        if (attempt < _tokenRetries - 1) {
+          await Future.delayed(_tokenRetryDelay);
+        }
+      }
+      return null;
     } on MissingPluginException {
       return null;
     } catch (_) {
@@ -76,6 +99,7 @@ class NotificationService {
         sound: true,
         provisional: false,
       );
+      await _messaging.setAutoInitEnabled(true);
       final androidImplementation = _local
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
@@ -192,6 +216,17 @@ class NotificationService {
     final details = NotificationDetails(android: android, iOS: ios, macOS: ios);
 
     await localPlugin.show(id, title, body, details);
+  }
+
+  static Future<void> _waitForApnsToken() async {
+    for (var attempt = 0; attempt < _apnsRetries; attempt++) {
+      final apnsToken = await _messaging.getAPNSToken();
+      final normalized = apnsToken?.trim();
+      if (normalized != null && normalized.isNotEmpty) return;
+      if (attempt < _apnsRetries - 1) {
+        await Future.delayed(_apnsRetryDelay);
+      }
+    }
   }
 }
 

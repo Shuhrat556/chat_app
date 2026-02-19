@@ -27,10 +27,19 @@ import 'package:chat_app/src/features/chat/domain/usecases/send_message_usecase.
 import 'package:chat_app/src/features/chat/domain/usecases/watch_messages_usecase.dart';
 import 'package:chat_app/src/features/chat/presentation/cubit/chat_cubit.dart';
 import 'package:chat_app/src/features/home/presentation/cubit/users_cubit.dart';
+import 'package:chat_app/src/features/settings/data/settings_local_data_source.dart';
+import 'package:chat_app/src/features/settings/data/settings_remote_data_source.dart';
+import 'package:chat_app/src/features/settings/data/settings_repository_impl.dart';
+import 'package:chat_app/src/features/settings/domain/settings_repository.dart';
+import 'package:chat_app/src/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:chat_app/src/features/stickers/data/sticker_pack_data_source.dart';
+import 'package:chat_app/src/core/theme/theme_cubit.dart';
 import 'package:chat_app/src/core/notifications/token_sync_service.dart';
+import 'package:chat_app/src/core/presence/presence_lifecycle_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get_it/get_it.dart';
 
 final sl = GetIt.instance;
@@ -44,6 +53,7 @@ Future<void> configureDependencies() async {
       return firestore;
     })
     ..registerLazySingleton<FirebaseDatabase>(() => FirebaseDatabase.instance)
+    ..registerLazySingleton<FirebaseStorage>(() => FirebaseStorage.instance)
     ..registerLazySingleton<FirebaseAuthDataSource>(
       () => FirebaseAuthDataSource(sl()),
     )
@@ -95,6 +105,13 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<TokenSyncService>(
       () => TokenSyncService(sl(), sl()),
     )
+    ..registerLazySingleton<PresenceLifecycleService>(
+      () => PresenceLifecycleService(
+        firebaseAuth: sl(),
+        userRemoteDataSource: sl(),
+        presenceRemoteDataSource: sl(),
+      ),
+    )
     ..registerFactory<AuthBloc>(
       () => AuthBloc(
         signInUseCase: sl(),
@@ -116,11 +133,25 @@ Future<void> configureDependencies() async {
       () => ChatRemoteDataSource(sl()),
     )
     ..registerLazySingleton<ChatLocalDataSource>(ChatLocalDataSource.new)
+    ..registerLazySingleton<SettingsRemoteDataSource>(
+      () => SettingsRemoteDataSource(sl()),
+    )
+    ..registerLazySingleton<SettingsLocalDataSource>(
+      SettingsLocalDataSource.new,
+    )
+    ..registerLazySingleton<SettingsRepository>(
+      () =>
+          SettingsRepositoryImpl(remoteDataSource: sl(), localDataSource: sl()),
+    )
+    ..registerLazySingleton<StickerPackDataSource>(
+      () => StickerPackDataSource(firestore: sl(), storage: sl()),
+    )
     ..registerLazySingleton<ChatRepository>(
       () => ChatRepositoryImpl(
         localDataSource: sl(),
         dataSource: sl(),
         firebaseAuth: sl(),
+        settingsRepository: sl(),
       ),
     )
     ..registerLazySingleton<WatchMessagesUseCase>(
@@ -140,7 +171,14 @@ Future<void> configureDependencies() async {
         markConversationReadUseCase: sl(),
         sendMessageUseCase: sl(),
         firebaseAuth: sl(),
+        presenceRemoteDataSource: sl(),
       ),
+    )
+    ..registerFactory<SettingsCubit>(
+      () => SettingsCubit(settingsRepository: sl(), firebaseAuth: sl()),
+    )
+    ..registerFactory<ThemeCubit>(
+      () => ThemeCubit(settingsRepository: sl(), firebaseAuth: sl()),
     )
     ..registerFactory<UsersCubit>(() => UsersCubit(sl(), sl()));
 }

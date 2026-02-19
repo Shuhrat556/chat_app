@@ -23,6 +23,7 @@ abstract class ChatRepository {
     required String peerId,
     required String text,
     String? imageUrl,
+    int? ttlSeconds,
   });
 
   Future<void> markConversationRead({required String peerId});

@@ -9,11 +9,22 @@ class AuthGradientScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF070C24), Color(0xFF666079), Color(0xFFE2DAEF)],
+            colors: isDark
+                ? const [
+                    Color(0xFF070C24),
+                    Color(0xFF666079),
+                    Color(0xFFE2DAEF),
+                  ]
+                : const [
+                    Color(0xFFEFF4FF),
+                    Color(0xFFD9E5FF),
+                    Color(0xFFF7FBFF),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -25,7 +36,9 @@ class AuthGradientScaffold extends StatelessWidget {
               top: 160.h,
               child: _GlowCircle(
                 size: 286.w,
-                color: const Color(0xFF1B2E59).withValues(alpha: 0.45),
+                color:
+                    (isDark ? const Color(0xFF1B2E59) : const Color(0xFF8AA9E5))
+                        .withValues(alpha: 0.35),
               ),
             ),
             Positioned(
@@ -33,7 +46,9 @@ class AuthGradientScaffold extends StatelessWidget {
               bottom: 88.h,
               child: _GlowCircle(
                 size: 248.w,
-                color: const Color(0xFF7D5BCE).withValues(alpha: 0.35),
+                color:
+                    (isDark ? const Color(0xFF7D5BCE) : const Color(0xFF94A8D8))
+                        .withValues(alpha: 0.30),
               ),
             ),
             SafeArea(
@@ -46,7 +61,9 @@ class AuthGradientScaffold extends StatelessWidget {
                       child: Text(
                         footerText!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF5B6483),
+                          color: isDark
+                              ? const Color(0xFF5B6483)
+                              : const Color(0xFF5D6C8F),
                           fontWeight: FontWeight.w600,
                           fontSize: 11.sp,
                         ),

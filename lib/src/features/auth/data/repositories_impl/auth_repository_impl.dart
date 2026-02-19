@@ -6,6 +6,7 @@ import 'package:chat_app/src/features/auth/data/datasources/user_remote_data_sou
 import 'package:chat_app/src/features/auth/data/datasources/presence_remote_data_source.dart';
 import 'package:chat_app/src/features/auth/data/models/app_user_model.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
+import 'package:chat_app/src/features/auth/domain/validators/username_validator.dart';
 import 'package:chat_app/src/features/auth/domain/repositories/auth_repository.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -114,7 +115,14 @@ class AuthRepositoryImpl implements AuthRepository {
     String? photoUrl,
     String? bio,
   }) async {
-    final normalizedUsername = username.trim();
+    final usernameValidation = UsernameValidator.validate(username);
+    if (usernameValidation != null) {
+      throw FirebaseAuthException(
+        code: 'invalid-username',
+        message: usernameValidation.messageKey,
+      );
+    }
+    final normalizedUsername = UsernameValidator.canonical(username);
     final cleanedFirstName = firstName?.trim();
     final cleanedLastName = lastName?.trim();
     final cleanedPhotoUrl = photoUrl?.trim();
@@ -317,13 +325,14 @@ class AuthRepositoryImpl implements AuthRepository {
       // Continue with Firebase-auth fallback values below.
     }
     final currentUsername = current?.username ?? firebaseUser.displayName ?? '';
-    final normalizedUsername = username.trim();
-    if (normalizedUsername.isEmpty) {
+    final usernameValidation = UsernameValidator.validate(username);
+    if (usernameValidation != null) {
       throw FirebaseAuthException(
         code: 'invalid-username',
-        message: 'Username bo\'sh bo\'lishi mumkin emas',
+        message: usernameValidation.messageKey,
       );
     }
+    final normalizedUsername = UsernameValidator.canonical(username);
 
     if (normalizedUsername.toLowerCase() !=
         currentUsername.trim().toLowerCase()) {
@@ -429,7 +438,7 @@ class AuthRepositoryImpl implements AuthRepository {
           preferredUsername ??
           firebaseUser.displayName ??
           firebaseUser.email?.split('@').first ??
-          'user_${firebaseUser.uid.substring(0, 6)}',
+          _lettersFallbackFromSeed(firebaseUser.uid),
     );
 
     await firebaseUser.updateDisplayName(normalizedUsername);
@@ -461,9 +470,14 @@ class AuthRepositoryImpl implements AuthRepository {
     required String desired,
   }) async {
     var candidate = _normalizeUsername(desired);
-    if (candidate.length < 3) {
-      candidate =
-          '${candidate}_${DateTime.now().millisecondsSinceEpoch % 1000}';
+    if (candidate.length < 5) {
+      candidate = (candidate + _lettersFallbackFromSeed(userId)).substring(
+        0,
+        5,
+      );
+    }
+    if (candidate.length > 20) {
+      candidate = candidate.substring(0, 20);
     }
     try {
       await _userRemoteDataSource.reserveUsername(
@@ -472,8 +486,13 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       return candidate;
     } on StateError {
-      final fallback =
-          '${candidate}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+      final fallbackSeed = _lettersFallbackFromSeed(
+        '$candidate${DateTime.now().microsecondsSinceEpoch}',
+      );
+      final fallbackLength = (candidate.length + fallbackSeed.length)
+          .clamp(5, 20)
+          .toInt();
+      final fallback = (candidate + fallbackSeed).substring(0, fallbackLength);
       await _userRemoteDataSource.reserveUsername(
         username: fallback,
         userId: userId,
@@ -484,11 +503,25 @@ class AuthRepositoryImpl implements AuthRepository {
 
   String _normalizeUsername(String value) {
     final cleaned = value.trim().toLowerCase().replaceAll(
-      RegExp(r'[^a-z0-9._-]'),
+      RegExp(r'[^a-z]'),
       '',
     );
     if (cleaned.isNotEmpty) return cleaned;
-    return 'user';
+    return _lettersFallbackFromSeed(value);
+  }
+
+  String _lettersFallbackFromSeed(String seed) {
+    final source = seed.isEmpty ? 'userseed' : seed;
+    final buffer = StringBuffer('user');
+    for (var i = 0; i < source.length && buffer.length < 8; i++) {
+      final code = source.codeUnitAt(i);
+      final letter = String.fromCharCode(97 + (code % 26));
+      buffer.write(letter);
+    }
+    while (buffer.length < 5) {
+      buffer.write('x');
+    }
+    return buffer.toString();
   }
 
   @override
@@ -520,20 +553,21 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    // Use provided username or fallback.
-    final phoneDigits = (firebaseUser.phoneNumber ?? '').replaceAll(
-      RegExp(r'\D'),
-      '',
-    );
-    final fallbackUsername = phoneDigits.isNotEmpty
-        ? 'tg_${phoneDigits.length >= 4 ? phoneDigits.substring(phoneDigits.length - 4) : phoneDigits}'
-        : 'tg_user';
-    String normalizedUsername = (username?.trim().isNotEmpty ?? false)
-        ? username!.trim()
+    final provided = username?.trim() ?? '';
+    final fallbackUsername = _lettersFallbackFromSeed(firebaseUser.uid);
+    String normalizedUsername = provided.isNotEmpty
+        ? UsernameValidator.canonical(provided)
         : fallbackUsername;
 
     // Reserve if provided explicitly to avoid collision.
-    if (username != null && username.trim().isNotEmpty) {
+    if (provided.isNotEmpty) {
+      final validation = UsernameValidator.validate(provided);
+      if (validation != null) {
+        throw FirebaseAuthException(
+          code: 'invalid-username',
+          message: validation.messageKey,
+        );
+      }
       try {
         await _userRemoteDataSource.reserveUsername(
           username: normalizedUsername,
@@ -553,11 +587,9 @@ class AuthRepositoryImpl implements AuthRepository {
           userId: firebaseUser.uid,
         );
       } on StateError {
-        normalizedUsername =
-            '${fallbackUsername}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-        await _userRemoteDataSource.reserveUsername(
-          username: normalizedUsername,
+        normalizedUsername = await _reserveUsername(
           userId: firebaseUser.uid,
+          desired: fallbackUsername,
         );
       }
     }

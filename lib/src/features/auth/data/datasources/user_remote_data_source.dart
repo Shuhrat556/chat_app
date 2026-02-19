@@ -1,4 +1,5 @@
 import 'package:chat_app/src/features/auth/data/models/app_user_model.dart';
+import 'package:chat_app/src/features/auth/domain/validators/username_validator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserRemoteDataSource {
@@ -12,15 +13,21 @@ class UserRemoteDataSource {
     required String username,
     required String userId,
   }) async {
-    final normalized = username.trim().toLowerCase();
+    final normalized = UsernameValidator.canonical(username);
+    final validationError = UsernameValidator.validate(normalized);
+    if (validationError != null) {
+      throw StateError(validationError.messageKey);
+    }
     final ref = _firestore.collection(_usernameCollection).doc(normalized);
 
     await _firestore.runTransaction((tx) async {
       final snap = await tx.get(ref);
-      if (snap.exists && snap.data()?['userId'] != userId) {
+      final owner = _readOwnerId(snap.data());
+      if (snap.exists && owner != userId) {
         throw StateError('Username band');
       }
       tx.set(ref, {
+        'uid': userId,
         'userId': userId,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -39,9 +46,7 @@ class UserRemoteDataSource {
     required bool isOnline,
     bool setLastSeen = false,
   }) {
-    final data = <String, dynamic>{
-      'isOnline': isOnline,
-    };
+    final data = <String, dynamic>{'isOnline': isOnline};
     if (setLastSeen) {
       data['lastSeen'] = FieldValue.serverTimestamp();
     }
@@ -56,8 +61,14 @@ class UserRemoteDataSource {
     required String newUsername,
     required String userId,
   }) async {
-    final next = newUsername.trim().toLowerCase();
-    final prev = previousUsername?.trim().toLowerCase();
+    final next = UsernameValidator.canonical(newUsername);
+    final prev = previousUsername == null
+        ? null
+        : UsernameValidator.canonical(previousUsername);
+    final validationError = UsernameValidator.validate(next);
+    if (validationError != null) {
+      throw StateError(validationError.messageKey);
+    }
     final newRef = _firestore.collection(_usernameCollection).doc(next);
     final prevRef = (prev != null && prev.isNotEmpty)
         ? _firestore.collection(_usernameCollection).doc(prev)
@@ -65,17 +76,19 @@ class UserRemoteDataSource {
 
     await _firestore.runTransaction((tx) async {
       final snap = await tx.get(newRef);
-      if (snap.exists && snap.data()?['userId'] != userId) {
+      final owner = _readOwnerId(snap.data());
+      if (snap.exists && owner != userId) {
         throw StateError('Username band');
       }
       tx.set(newRef, {
+        'uid': userId,
         'userId': userId,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (prevRef != null && prev != next) {
         final prevSnap = await tx.get(prevRef);
-        if (prevSnap.exists && prevSnap.data()?['userId'] == userId) {
+        if (prevSnap.exists && _readOwnerId(prevSnap.data()) == userId) {
           tx.delete(prevRef);
         }
       }
@@ -99,9 +112,11 @@ class UserRemoteDataSource {
   }
 
   Stream<AppUserModel?> streamUser(String userId) {
-    return _firestore.collection(_userCollection).doc(userId).snapshots().map(
-          (doc) => doc.exists ? AppUserModel.fromFirestore(doc) : null,
-        );
+    return _firestore
+        .collection(_userCollection)
+        .doc(userId)
+        .snapshots()
+        .map((doc) => doc.exists ? AppUserModel.fromFirestore(doc) : null);
   }
 
   Stream<List<AppUserModel>> streamUsers() {
@@ -110,10 +125,10 @@ class UserRemoteDataSource {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
-      (snapshot) => snapshot.docs
-          .map((doc) => AppUserModel.fromFirestore(doc))
-          .toList(growable: false),
-    );
+          (snapshot) => snapshot.docs
+              .map((doc) => AppUserModel.fromFirestore(doc))
+              .toList(growable: false),
+        );
   }
 
   Future<void> deleteUser({required String userId}) async {
@@ -129,10 +144,12 @@ class UserRemoteDataSource {
 
       if (username != null && username.trim().isNotEmpty) {
         final normalized = username.trim().toLowerCase();
-        final usernameRef =
-            _firestore.collection(_usernameCollection).doc(normalized);
+        final usernameRef = _firestore
+            .collection(_usernameCollection)
+            .doc(normalized);
         final usernameSnap = await tx.get(usernameRef);
-        if (usernameSnap.exists && usernameSnap.data()?['userId'] == userId) {
+        if (usernameSnap.exists &&
+            _readOwnerId(usernameSnap.data()) == userId) {
           tx.delete(usernameRef);
         }
       }
@@ -142,9 +159,18 @@ class UserRemoteDataSource {
   Future<bool> isUsernameAvailable(String username) async {
     final query = await _firestore
         .collection(_userCollection)
-        .where('username', isEqualTo: username.trim())
+        .where('username', isEqualTo: UsernameValidator.canonical(username))
         .limit(1)
         .get();
     return query.docs.isEmpty;
+  }
+
+  String? _readOwnerId(Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final uid = data['uid'] as String?;
+    if (uid != null && uid.isNotEmpty) return uid;
+    final userId = data['userId'] as String?;
+    if (userId != null && userId.isNotEmpty) return userId;
+    return null;
   }
 }

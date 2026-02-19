@@ -105,7 +105,8 @@ post_install do |installer|
   {
     'firebase_auth' => '#import <FirebaseAuth/FirebaseAuth.h>',
     'firebase_database' => '#import <FirebaseDatabase/FirebaseDatabase.h>',
-    'firebase_messaging' => '#import <FirebaseMessaging/FirebaseMessaging.h>'
+    'firebase_messaging' => '#import <FirebaseMessaging/FirebaseMessaging.h>',
+    'firebase_storage' => '@import FirebaseStorage;'
   }.each do |plugin_name, replacement|
     pattern = File.expand_path("~/.pub-cache/hosted/pub.dev/#{plugin_name}-*/ios/Classes/**/*.{h,m,mm}")
     Dir.glob(pattern).each do |source_path|

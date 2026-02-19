@@ -53,14 +53,26 @@ class _HomePageState extends State<HomePage> {
     final currentUser = authState.user;
     final t = context.l10n;
     final locale = Localizations.localeOf(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return BlocProvider<UsersCubit>.value(
       value: _usersCubit,
       child: Scaffold(
         body: DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF010A1F), Color(0xFF03143A), Color(0xFF010A24)],
+              colors: isDark
+                  ? const [
+                      Color(0xFF010A1F),
+                      Color(0xFF03143A),
+                      Color(0xFF010A24),
+                    ]
+                  : const [
+                      Color(0xFFEAF2FF),
+                      Color(0xFFD9E8FF),
+                      Color(0xFFF5F9FF),
+                    ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -77,6 +89,7 @@ class _HomePageState extends State<HomePage> {
                         fallback: _initialFromUser(currentUser),
                         isOnline: currentUser?.isOnline == true,
                         size: 62.w,
+                        isDark: isDark,
                       ),
                       SizedBox(width: 10.w),
                       Expanded(
@@ -86,7 +99,7 @@ class _HomePageState extends State<HomePage> {
                             Text(
                               _headerTitle(currentUser, locale, t),
                               style: TextStyle(
-                                color: Colors.white,
+                                color: isDark ? Colors.white : scheme.onSurface,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 31.sp,
                                 height: 1,
@@ -110,20 +123,26 @@ class _HomePageState extends State<HomePage> {
                         onPressed: () => context.push('/profile'),
                         icon: Icon(
                           Icons.edit_outlined,
-                          color: Color(0xFFA57CFF),
+                          color: isDark
+                              ? const Color(0xFFA57CFF)
+                              : scheme.primary,
                           size: 21.sp,
                         ),
                       ),
                       PopupMenuButton<String>(
                         icon: Icon(
                           Icons.more_vert,
-                          color: Color(0xFFA0ABC5),
+                          color: isDark
+                              ? const Color(0xFFA0ABC5)
+                              : scheme.outline,
                           size: 21.sp,
                         ),
-                        color: const Color(0xFF0F1B36),
+                        color: isDark ? const Color(0xFF0F1B36) : Colors.white,
                         onSelected: (value) {
                           if (value == 'profile') {
                             context.push('/profile');
+                          } else if (value == 'settings') {
+                            context.push('/settings');
                           } else if (value == 'logout') {
                             context.read<AuthBloc>().add(
                               const SignOutRequested(),
@@ -135,14 +154,27 @@ class _HomePageState extends State<HomePage> {
                             value: 'profile',
                             child: Text(
                               t.profileTitle,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: isDark ? Colors.white : scheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'settings',
+                            child: Text(
+                              t.settingsTitle,
+                              style: TextStyle(
+                                color: isDark ? Colors.white : scheme.onSurface,
+                              ),
                             ),
                           ),
                           PopupMenuItem<String>(
                             value: 'logout',
                             child: Text(
                               t.signOut,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: isDark ? Colors.white : scheme.onSurface,
+                              ),
                             ),
                           ),
                         ],
@@ -155,10 +187,12 @@ class _HomePageState extends State<HomePage> {
                   child: Container(
                     height: 46.h,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF13223F),
+                      color: isDark ? const Color(0xFF13223F) : Colors.white,
                       borderRadius: BorderRadius.circular(21.r),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : scheme.outline,
                       ),
                     ),
                     child: Row(
@@ -166,7 +200,9 @@ class _HomePageState extends State<HomePage> {
                         SizedBox(width: 14.w),
                         Icon(
                           Icons.search,
-                          color: Color(0xFF7382A3),
+                          color: isDark
+                              ? const Color(0xFF7382A3)
+                              : scheme.onSurfaceVariant,
                           size: 23.sp,
                         ),
                         SizedBox(width: 8.w),
@@ -174,14 +210,16 @@ class _HomePageState extends State<HomePage> {
                           child: TextField(
                             controller: _searchController,
                             style: TextStyle(
-                              color: Colors.white,
+                              color: isDark ? Colors.white : scheme.onSurface,
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w600,
                             ),
                             decoration: InputDecoration(
                               hintText: _searchHint(locale),
                               hintStyle: TextStyle(
-                                color: Color(0xFF6E7D9F),
+                                color: isDark
+                                    ? const Color(0xFF6E7D9F)
+                                    : scheme.onSurfaceVariant,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -197,7 +235,9 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _searchController.clear,
                             icon: Icon(
                               Icons.close_rounded,
-                              color: Color(0xFF8C97B2),
+                              color: isDark
+                                  ? const Color(0xFF8C97B2)
+                                  : scheme.onSurfaceVariant,
                               size: 19.sp,
                             ),
                           ),
@@ -208,20 +248,26 @@ class _HomePageState extends State<HomePage> {
                 ),
                 Container(
                   height: 1.h,
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : scheme.outlineVariant,
                 ),
                 Expanded(
                   child: currentUser == null
                       ? Center(
                           child: Text(
                             t.notSignedIn,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: isDark ? Colors.white : scheme.onSurface,
+                            ),
                           ),
                         )
                       : RefreshIndicator(
                           onRefresh: _onRefresh,
                           color: const Color(0xFF8D66FF),
-                          backgroundColor: const Color(0xFF0F1B36),
+                          backgroundColor: isDark
+                              ? const Color(0xFF0F1B36)
+                              : Colors.white,
                           displacement: 24.h,
                           child: BlocBuilder<UsersCubit, UsersState>(
                             builder: (context, state) {
@@ -253,7 +299,9 @@ class _HomePageState extends State<HomePage> {
                                         child: Text(
                                           state.error ?? t.error,
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: isDark
+                                                ? Colors.white
+                                                : scheme.onSurface,
                                             fontSize: 14.sp,
                                           ),
                                           textAlign: TextAlign.center,
@@ -316,7 +364,9 @@ class _HomePageState extends State<HomePage> {
                                         child: Text(
                                           t.noUsers,
                                           style: TextStyle(
-                                            color: Colors.white70,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : scheme.onSurfaceVariant,
                                             fontSize: 15.sp,
                                           ),
                                         ),
@@ -360,6 +410,7 @@ class _HomePageState extends State<HomePage> {
                                     statusText: statusText,
                                     preview: previewText,
                                     isOnline: peer.isOnline == true,
+                                    isDark: isDark,
                                     timeLabel: _timeLabel(
                                       conversation?.lastMessageAt ??
                                           peer.lastSeen,
@@ -487,6 +538,7 @@ class _ChatPreviewTile extends StatelessWidget {
     required this.statusText,
     required this.preview,
     required this.isOnline,
+    required this.isDark,
     required this.timeLabel,
     required this.unreadCount,
     required this.onTap,
@@ -496,12 +548,14 @@ class _ChatPreviewTile extends StatelessWidget {
   final String statusText;
   final String preview;
   final bool isOnline;
+  final bool isDark;
   final String timeLabel;
   final int unreadCount;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final presenceColor = _presenceColor(peer);
 
     return InkWell(
@@ -517,6 +571,7 @@ class _ChatPreviewTile extends StatelessWidget {
               isOnline: true,
               size: 52.w,
               dotColor: presenceColor,
+              isDark: isDark,
             ),
             SizedBox(width: 10.w),
             Expanded(
@@ -528,7 +583,7 @@ class _ChatPreviewTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isDark ? Colors.white : scheme.onSurface,
                       fontWeight: FontWeight.w800,
                       fontSize: 14.sp,
                     ),
@@ -541,7 +596,9 @@ class _ChatPreviewTile extends StatelessWidget {
                     style: TextStyle(
                       color: isOnline
                           ? const Color(0xFF00E47D)
-                          : const Color(0xFF7F8EAC),
+                          : (isDark
+                                ? const Color(0xFF7F8EAC)
+                                : scheme.onSurfaceVariant),
                       fontSize: 11.5.sp,
                       fontWeight: FontWeight.w700,
                     ),
@@ -553,8 +610,12 @@ class _ChatPreviewTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: unreadCount > 0
-                          ? const Color(0xFFF1F5FF)
-                          : const Color(0xFF9AA5BE),
+                          ? (isDark
+                                ? const Color(0xFFF1F5FF)
+                                : scheme.onSurface)
+                          : (isDark
+                                ? const Color(0xFF9AA5BE)
+                                : scheme.onSurfaceVariant),
                       fontSize: 13.sp,
                       fontWeight: unreadCount > 0
                           ? FontWeight.w700
@@ -571,7 +632,9 @@ class _ChatPreviewTile extends StatelessWidget {
                 Text(
                   timeLabel,
                   style: TextStyle(
-                    color: Color(0xFF7E89A8),
+                    color: isDark
+                        ? const Color(0xFF7E89A8)
+                        : scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
                     fontSize: 14.sp,
                   ),
@@ -635,6 +698,7 @@ class _AvatarWithPresence extends StatelessWidget {
     required this.fallback,
     required this.isOnline,
     required this.size,
+    required this.isDark,
     this.dotColor,
   });
 
@@ -642,11 +706,13 @@ class _AvatarWithPresence extends StatelessWidget {
   final String fallback;
   final bool isOnline;
   final double size;
+  final bool isDark;
   final Color? dotColor;
 
   @override
   Widget build(BuildContext context) {
     final imageProvider = safeNetworkImage(imageUrl);
+    final scheme = Theme.of(context).colorScheme;
 
     return SizedBox(
       width: size,
@@ -657,11 +723,16 @@ class _AvatarWithPresence extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF7457DB), width: 2.w),
+              border: Border.all(
+                color: isDark ? const Color(0xFF7457DB) : scheme.primary,
+                width: 2.w,
+              ),
             ),
             child: CircleAvatar(
               radius: size / 2,
-              backgroundColor: const Color(0xFF1A2745),
+              backgroundColor: isDark
+                  ? const Color(0xFF1A2745)
+                  : scheme.surfaceContainerHighest,
               backgroundImage: imageProvider,
               child: imageProvider == null
                   ? Text(
@@ -689,7 +760,7 @@ class _AvatarWithPresence extends StatelessWidget {
                         : const Color(0xFF9AA3BA)),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: const Color(0xFF031236),
+                  color: isDark ? const Color(0xFF031236) : Colors.white,
                   width: 1.8.w,
                 ),
               ),

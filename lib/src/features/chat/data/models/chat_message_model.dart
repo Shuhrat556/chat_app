@@ -13,6 +13,9 @@ class ChatMessageModel extends ChatMessage {
     super.status = MessageStatus.sent,
     super.deliveredAt,
     super.readAt,
+    super.ttlSeconds,
+    super.expireAt,
+    super.deletedForAll = false,
   });
 
   Map<String, dynamic> toMap({bool useServerTimestamp = false}) => {
@@ -30,6 +33,9 @@ class ChatMessageModel extends ChatMessage {
         ? Timestamp.fromDate(deliveredAt!)
         : null,
     'readAt': readAt != null ? Timestamp.fromDate(readAt!) : null,
+    'ttlSeconds': ttlSeconds,
+    'expireAt': expireAt != null ? Timestamp.fromDate(expireAt!) : null,
+    'deletedForAll': deletedForAll,
   };
 
   factory ChatMessageModel.fromFirestore(
@@ -83,6 +89,17 @@ class ChatMessageModel extends ChatMessage {
       readAt = DateTime.fromMillisecondsSinceEpoch(readRaw);
     }
 
+    DateTime? expireAt;
+    final expireRaw = data['expireAt'];
+    if (expireRaw is Timestamp) {
+      expireAt = expireRaw.toDate();
+    } else if (expireRaw is int) {
+      expireAt = DateTime.fromMillisecondsSinceEpoch(expireRaw);
+    }
+
+    final ttlSeconds = data['ttlSeconds'] as int?;
+    final deletedForAll = data['deletedForAll'] as bool? ?? false;
+
     return ChatMessageModel(
       id: data['id'] as String? ?? doc.id,
       conversationId:
@@ -107,6 +124,9 @@ class ChatMessageModel extends ChatMessage {
       status: status,
       deliveredAt: deliveredAt,
       readAt: readAt,
+      ttlSeconds: ttlSeconds,
+      expireAt: expireAt,
+      deletedForAll: deletedForAll,
     );
   }
 
@@ -114,6 +134,9 @@ class ChatMessageModel extends ChatMessage {
     MessageStatus? status,
     DateTime? deliveredAt,
     DateTime? readAt,
+    int? ttlSeconds,
+    DateTime? expireAt,
+    bool? deletedForAll,
   }) {
     return ChatMessageModel(
       id: id,
@@ -126,6 +149,9 @@ class ChatMessageModel extends ChatMessage {
       status: status ?? this.status,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       readAt: readAt ?? this.readAt,
+      ttlSeconds: ttlSeconds ?? this.ttlSeconds,
+      expireAt: expireAt ?? this.expireAt,
+      deletedForAll: deletedForAll ?? this.deletedForAll,
     );
   }
 }

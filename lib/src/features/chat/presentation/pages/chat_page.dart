@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chat_app/src/core/di/service_locator.dart';
@@ -7,11 +8,17 @@ import 'package:chat_app/src/features/auth/data/datasources/user_remote_data_sou
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:chat_app/src/features/chat/presentation/cubit/chat_cubit.dart';
+import 'package:chat_app/src/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:chat_app/src/features/settings/domain/user_settings.dart';
+import 'package:chat_app/src/features/stickers/data/sticker_pack_data_source.dart';
+import 'package:chat_app/src/features/stickers/domain/sticker_pack.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -39,6 +46,9 @@ class _ChatPageState extends State<ChatPage>
   bool _isUploadingImage = false;
   bool _showScrollToBottom = false;
   bool _didInitialScrollToBottom = false;
+  bool _didInitSecretTimer = false;
+  int? _selectedSecretTtlSeconds;
+  Timer? _expiryTicker;
 
   final List<String> _quickEmojis = const [
     '😀',
@@ -64,6 +74,10 @@ class _ChatPageState extends State<ChatPage>
       vsync: this,
       duration: const Duration(seconds: 14),
     )..repeat(reverse: true);
+    _expiryTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   @override
@@ -74,6 +88,7 @@ class _ChatPageState extends State<ChatPage>
     _scrollController.dispose();
     _inputFocusNode.dispose();
     _bgController.dispose();
+    _expiryTicker?.cancel();
     super.dispose();
   }
 
@@ -96,7 +111,7 @@ class _ChatPageState extends State<ChatPage>
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    ctx.read<ChatCubit>().send(text);
+    ctx.read<ChatCubit>().send(text, ttlSeconds: _selectedSecretTtlSeconds);
     _messageController.clear();
 
     if (_showEmojiPanel && mounted) {
@@ -168,6 +183,7 @@ class _ChatPageState extends State<ChatPage>
       await context.read<ChatCubit>().sendImage(
         imageUrl,
         caption: caption.isEmpty ? null : caption,
+        ttlSeconds: _selectedSecretTtlSeconds,
       );
       _messageController.clear();
       if (_showEmojiPanel) {
@@ -183,6 +199,94 @@ class _ChatPageState extends State<ChatPage>
         setState(() => _isUploadingImage = false);
       }
     }
+  }
+
+  Future<void> _pickAndSendSticker() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || !mounted) return;
+    final chatCubit = context.read<ChatCubit>();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: StreamBuilder<StickerPack?>(
+            stream: sl<StickerPackDataSource>().watchPack(uid),
+            builder: (context, snapshot) {
+              final pack = snapshot.data;
+              final items = pack?.items ?? const <StickerItem>[];
+              if (items.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(context.l10n.noStickersYet),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          if (mounted) {
+                            context.push('/stickers');
+                          }
+                        },
+                        child: Text(context.l10n.stickerPackTitle),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return GestureDetector(
+                      onTap: () async {
+                        await chatCubit.sendImage(
+                          item.url,
+                          ttlSeconds: _selectedSecretTtlSeconds,
+                        );
+                        if (!sheetContext.mounted) return;
+                        if (mounted) {
+                          Navigator.of(sheetContext).pop();
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(item.url, fit: BoxFit.cover),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _ensureSecretTimerInitialized(BuildContext context) {
+    if (_didInitSecretTimer) return;
+    var defaults = const UserSettings();
+    try {
+      defaults = context.read<SettingsCubit>().state.settings;
+    } catch (_) {}
+    _selectedSecretTtlSeconds = defaults.secretChatDefaultOn ? 30 : null;
+    _didInitSecretTimer = true;
+  }
+
+  void _onSecretTimerChanged(int? value) {
+    setState(() => _selectedSecretTtlSeconds = value);
   }
 
   Future<String> _uploadChatImage(XFile file) async {
@@ -314,6 +418,7 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   Widget build(BuildContext context) {
+    _ensureSecretTimerInitialized(context);
     final peer = widget.peer;
     if (peer == null) {
       return Scaffold(
@@ -338,6 +443,7 @@ class _ChatPageState extends State<ChatPage>
 
         final l10n = context.l10n;
         final locale = Localizations.localeOf(context);
+        final isDark = Theme.of(context).brightness == Brightness.dark;
 
         return StreamBuilder<PresenceStatus>(
           stream: presenceStream,
@@ -376,12 +482,17 @@ class _ChatPageState extends State<ChatPage>
                   });
                 },
                 builder: (context, state) {
+                  final isPeerOnline = _isPeerOnline(livePeer, presence);
                   final statusText = _statusText(
                     livePeer,
                     presence,
                     state.isTyping,
                     l10n,
                     locale,
+                  );
+                  final statusColor = _statusTextColor(
+                    isOnline: isPeerOnline,
+                    isTyping: state.isTyping,
                   );
 
                   return Scaffold(
@@ -399,15 +510,21 @@ class _ChatPageState extends State<ChatPage>
                               child: _ChatTopBar(
                                 title: title,
                                 statusText: statusText,
+                                statusColor: statusColor,
+                                isPeerOnline: isPeerOnline,
                                 peer: livePeer,
                                 onCall: () => _makePhoneCall(livePeer),
+                                isDark: isDark,
                               ),
                             ),
                             Expanded(
                               child: Column(
                                 children: [
                                   SizedBox(height: 8.h),
-                                  _DayChip(label: _todayLabel(locale)),
+                                  _DayChip(
+                                    label: _todayLabel(locale),
+                                    isDark: isDark,
+                                  ),
                                   SizedBox(height: 5.h),
                                   Expanded(
                                     child: _MessagesList(
@@ -427,6 +544,7 @@ class _ChatPageState extends State<ChatPage>
                                             key: const ValueKey('emoji_panel'),
                                             emojis: _quickEmojis,
                                             onTap: _insertEmoji,
+                                            isDark: isDark,
                                           )
                                         : const SizedBox.shrink(),
                                   ),
@@ -449,12 +567,19 @@ class _ChatPageState extends State<ChatPage>
                                                 vertical: 7.h,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFF0F2142),
+                                                color: isDark
+                                                    ? const Color(0xFF0F2142)
+                                                    : Colors.white,
                                                 borderRadius:
                                                     BorderRadius.circular(14.r),
                                                 border: Border.all(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.09),
+                                                  color: isDark
+                                                      ? Colors.white.withValues(
+                                                          alpha: 0.09,
+                                                        )
+                                                      : Theme.of(
+                                                          context,
+                                                        ).colorScheme.outline,
                                                 ),
                                               ),
                                               child: Row(
@@ -475,9 +600,13 @@ class _ChatPageState extends State<ChatPage>
                                                   Text(
                                                     _uploadingImageLabel(),
                                                     style: TextStyle(
-                                                      color: const Color(
-                                                        0xFFCBD8F6,
-                                                      ),
+                                                      color: isDark
+                                                          ? const Color(
+                                                              0xFFCBD8F6,
+                                                            )
+                                                          : Theme.of(context)
+                                                                .colorScheme
+                                                                .onSurface,
                                                       fontSize: 12.sp,
                                                       fontWeight:
                                                           FontWeight.w600,
@@ -498,21 +627,48 @@ class _ChatPageState extends State<ChatPage>
                                         10.w,
                                         10.h,
                                       ),
-                                      child: _ComposerBar(
-                                        controller: _messageController,
-                                        focusNode: _inputFocusNode,
-                                        showSend: _hasTypedText,
-                                        onSend: () => _send(context),
-                                        onToggleEmoji: _toggleEmojiPanel,
-                                        onAttach: _pickAndSendImage,
-                                        isUploadingImage: _isUploadingImage,
-                                        onInputTap: () {
-                                          if (_showEmojiPanel) {
-                                            setState(
-                                              () => _showEmojiPanel = false,
-                                            );
-                                          }
-                                        },
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (_selectedSecretTtlSeconds != null)
+                                            Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Padding(
+                                                padding: EdgeInsets.only(
+                                                  left: 4.w,
+                                                  bottom: 6.h,
+                                                ),
+                                                child: _SecretTimerChip(
+                                                  label: _secretTimerLabel(
+                                                    _selectedSecretTtlSeconds,
+                                                  ),
+                                                  isDark: isDark,
+                                                ),
+                                              ),
+                                            ),
+                                          _ComposerBar(
+                                            controller: _messageController,
+                                            focusNode: _inputFocusNode,
+                                            showSend: _hasTypedText,
+                                            onSend: () => _send(context),
+                                            onToggleEmoji: _toggleEmojiPanel,
+                                            onAttach: _pickAndSendImage,
+                                            onPickSticker: _pickAndSendSticker,
+                                            isUploadingImage: _isUploadingImage,
+                                            onInputTap: () {
+                                              if (_showEmojiPanel) {
+                                                setState(
+                                                  () => _showEmojiPanel = false,
+                                                );
+                                              }
+                                            },
+                                            secretTtlSeconds:
+                                                _selectedSecretTtlSeconds,
+                                            onSecretTimerChanged:
+                                                _onSecretTimerChanged,
+                                            isDark: isDark,
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
@@ -556,6 +712,15 @@ class _ChatPageState extends State<ChatPage>
     };
   }
 
+  String _secretTimerLabel(int? value) {
+    if (value == null) return 'Off';
+    if (value >= 60) {
+      final minutes = value ~/ 60;
+      return '${minutes}m';
+    }
+    return '${value}s';
+  }
+
   String _statusText(
     AppUser peer,
     PresenceStatus? presence,
@@ -564,10 +729,10 @@ class _ChatPageState extends State<ChatPage>
     Locale locale,
   ) {
     if (isTyping) {
-      return 'yozmoqda...';
+      return _typingLabel(locale);
     }
 
-    final effectiveOnline = presence?.isOnline ?? peer.isOnline == true;
+    final effectiveOnline = presence?.isOnline ?? (peer.isOnline == true);
     final lastSeen = presence?.lastSeen ?? peer.lastSeen;
 
     if (effectiveOnline) return t.online;
@@ -580,6 +745,26 @@ class _ChatPageState extends State<ChatPage>
     }
     return t.offline;
   }
+
+  String _typingLabel(Locale locale) {
+    return switch (locale.languageCode) {
+      'uz' => 'yozmoqda...',
+      'ru' => 'печатает...',
+      'tg' => 'менависад...',
+      _ => 'typing...',
+    };
+  }
+
+  bool _isPeerOnline(AppUser peer, PresenceStatus? presence) {
+    return presence?.isOnline ?? (peer.isOnline == true);
+  }
+
+  Color _statusTextColor({required bool isOnline, required bool isTyping}) {
+    if (isTyping || isOnline) {
+      return const Color(0xFF00E47D);
+    }
+    return const Color(0xFF98A6C5);
+  }
 }
 
 class _AnimatedChatBackground extends StatelessWidget {
@@ -589,6 +774,7 @@ class _AnimatedChatBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
@@ -600,18 +786,18 @@ class _AnimatedChatBackground extends StatelessWidget {
         final end = Alignment(1 - (0.12 * wave), 1);
 
         final c1 = Color.lerp(
-          const Color(0xFF020A1F),
-          const Color(0xFF061A3E),
+          isDark ? const Color(0xFF020A1F) : const Color(0xFFEAF2FF),
+          isDark ? const Color(0xFF061A3E) : const Color(0xFFDDE9FF),
           pulse,
         )!;
         final c2 = Color.lerp(
-          const Color(0xFF04143A),
-          const Color(0xFF0A285B),
+          isDark ? const Color(0xFF04143A) : const Color(0xFFD3E3FF),
+          isDark ? const Color(0xFF0A285B) : const Color(0xFFC9DDFF),
           1 - pulse,
         )!;
         final c3 = Color.lerp(
-          const Color(0xFF010A23),
-          const Color(0xFF04163B),
+          isDark ? const Color(0xFF010A23) : const Color(0xFFF3F8FF),
+          isDark ? const Color(0xFF04163B) : const Color(0xFFE8F1FF),
           pulse,
         )!;
 
@@ -675,36 +861,54 @@ class _ChatTopBar extends StatelessWidget {
   const _ChatTopBar({
     required this.title,
     required this.statusText,
+    required this.statusColor,
+    required this.isPeerOnline,
     required this.peer,
     required this.onCall,
+    required this.isDark,
   });
 
   final String title;
   final String statusText;
+  final Color statusColor;
+  final bool isPeerOnline;
   final AppUser peer;
   final VoidCallback onCall;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final titleColor = isDark ? Colors.white : scheme.onSurface;
+    final iconColor = isDark ? const Color(0xFFA57CFF) : scheme.primary;
+    final mutedIconColor = isDark ? const Color(0xFFA0ABC5) : scheme.outline;
     return Container(
       padding: EdgeInsets.fromLTRB(5.w, 5.h, 5.w, 8.h),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF10274D).withValues(alpha: 0.96),
-            const Color(0xFF0D2142).withValues(alpha: 0.94),
+            isDark
+                ? const Color(0xFF10274D).withValues(alpha: 0.96)
+                : Colors.white.withValues(alpha: 0.94),
+            isDark
+                ? const Color(0xFF0D2142).withValues(alpha: 0.94)
+                : const Color(0xFFF6F8FF).withValues(alpha: 0.96),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         border: Border(
           bottom: BorderSide(
-            color: const Color(0xFF8FB2FF).withValues(alpha: 0.24),
+            color: isDark
+                ? const Color(0xFF8FB2FF).withValues(alpha: 0.24)
+                : scheme.outlineVariant,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF020A1C).withValues(alpha: 0.42),
+            color: (isDark ? Colors.black : scheme.outline).withValues(
+              alpha: isDark ? 0.42 : 0.12,
+            ),
             blurRadius: 14.r,
             offset: Offset(0, 5.h),
           ),
@@ -716,7 +920,7 @@ class _ChatTopBar extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop(),
             icon: Icon(
               Icons.arrow_back_rounded,
-              color: Colors.white,
+              color: titleColor,
               size: 23.sp,
             ),
           ),
@@ -725,8 +929,10 @@ class _ChatTopBar extends StatelessWidget {
             fallback: _fallbackInitial(peer),
             size: 48.w,
             showDot: true,
-            dotColor: const Color(0xFF00D772),
-            borderColor: const Color(0xFF7457DB),
+            dotColor: isPeerOnline
+                ? const Color(0xFF00D772)
+                : (isDark ? const Color(0xFF5B6888) : scheme.outline),
+            borderColor: isDark ? const Color(0xFF7457DB) : scheme.primary,
           ),
           SizedBox(width: 8.w),
           Expanded(
@@ -738,7 +944,7 @@ class _ChatTopBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: titleColor,
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w800,
                   ),
@@ -749,7 +955,7 @@ class _ChatTopBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Color(0xFF00E47D),
+                    color: statusColor,
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w700,
                   ),
@@ -759,23 +965,15 @@ class _ChatTopBar extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCall,
-            icon: Icon(
-              Icons.call_outlined,
-              color: Color(0xFFA57CFF),
-              size: 21.sp,
-            ),
+            icon: Icon(Icons.call_outlined, color: iconColor, size: 21.sp),
           ),
           IconButton(
             onPressed: () {},
-            icon: Icon(
-              Icons.videocam_outlined,
-              color: Color(0xFFA57CFF),
-              size: 21.sp,
-            ),
+            icon: Icon(Icons.videocam_outlined, color: iconColor, size: 21.sp),
           ),
           IconButton(
             onPressed: () {},
-            icon: Icon(Icons.more_vert, color: Color(0xFFA0ABC5), size: 21.sp),
+            icon: Icon(Icons.more_vert, color: mutedIconColor, size: 21.sp),
           ),
         ],
       ),
@@ -789,23 +987,27 @@ class _ChatTopBar extends StatelessWidget {
 }
 
 class _DayChip extends StatelessWidget {
-  const _DayChip({required this.label});
+  const _DayChip({required this.label, required this.isDark});
 
   final String label;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 17.w, vertical: 7.h),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2946),
+        color: isDark ? const Color(0xFF1A2946) : Colors.white,
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : scheme.outline,
+        ),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: Color(0xFF99A6C3),
+          color: isDark ? const Color(0xFF99A6C3) : scheme.onSurface,
           fontSize: 15.sp,
           fontWeight: FontWeight.w700,
         ),
@@ -814,21 +1016,64 @@ class _DayChip extends StatelessWidget {
   }
 }
 
-class _EmojiPanel extends StatelessWidget {
-  const _EmojiPanel({required this.emojis, required this.onTap, super.key});
+class _SecretTimerChip extends StatelessWidget {
+  const _SecretTimerChip({required this.label, required this.isDark});
 
-  final List<String> emojis;
-  final ValueChanged<String> onTap;
+  final String label;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0x66202142)
+            : scheme.primaryContainer.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.14)
+              : scheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        'Secret: $label',
+        style: TextStyle(
+          color: isDark ? const Color(0xFFC8D6F4) : scheme.onPrimaryContainer,
+          fontSize: 11.sp,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmojiPanel extends StatelessWidget {
+  const _EmojiPanel({
+    required this.emojis,
+    required this.onTap,
+    required this.isDark,
+    super.key,
+  });
+
+  final List<String> emojis;
+  final ValueChanged<String> onTap;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: EdgeInsets.fromLTRB(10.w, 0, 10.w, 7.h),
       padding: EdgeInsets.symmetric(horizontal: 7.w, vertical: 8.h),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1A36),
+        color: isDark ? const Color(0xFF0D1A36) : Colors.white,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.10) : scheme.outline,
+        ),
       ),
       child: Wrap(
         spacing: 7.w,
@@ -842,7 +1087,9 @@ class _EmojiPanel extends StatelessWidget {
                   height: 34.w,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : scheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10.r),
                   ),
                   child: Text(emoji, style: TextStyle(fontSize: 19.sp)),
@@ -863,8 +1110,12 @@ class _ComposerBar extends StatelessWidget {
     required this.onSend,
     required this.onToggleEmoji,
     required this.onAttach,
+    required this.onPickSticker,
     required this.isUploadingImage,
     required this.onInputTap,
+    required this.secretTtlSeconds,
+    required this.onSecretTimerChanged,
+    required this.isDark,
   });
 
   final TextEditingController controller;
@@ -873,11 +1124,17 @@ class _ComposerBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onToggleEmoji;
   final VoidCallback onAttach;
+  final VoidCallback onPickSticker;
   final bool isUploadingImage;
   final VoidCallback onInputTap;
+  final int? secretTtlSeconds;
+  final ValueChanged<int?> onSecretTimerChanged;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final iconColor = isDark ? const Color(0xFF95A3C6) : scheme.outline;
     return Row(
       children: [
         Expanded(
@@ -885,9 +1142,15 @@ class _ComposerBar extends StatelessWidget {
             height: 52.h,
             padding: EdgeInsets.symmetric(horizontal: 5.w),
             decoration: BoxDecoration(
-              color: const Color(0xFF091A39).withValues(alpha: 0.96),
+              color: isDark
+                  ? const Color(0xFF091A39).withValues(alpha: 0.96)
+                  : Colors.white.withValues(alpha: 0.98),
               borderRadius: BorderRadius.circular(28.r),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : scheme.outline,
+              ),
             ),
             child: Row(
               children: [
@@ -896,8 +1159,52 @@ class _ComposerBar extends StatelessWidget {
                   splashRadius: 20.r,
                   icon: Icon(
                     Icons.sentiment_satisfied_alt_rounded,
-                    color: const Color(0xFF95A3C6),
+                    color: iconColor,
                     size: 23.sp,
+                  ),
+                ),
+                PopupMenuButton<int>(
+                  tooltip: 'Secret timer',
+                  onSelected: (value) {
+                    if (value == -1) {
+                      onSecretTimerChanged(null);
+                    } else {
+                      onSecretTimerChanged(value);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    CheckedPopupMenuItem<int>(
+                      value: -1,
+                      checked: secretTtlSeconds == null,
+                      child: const Text('Off'),
+                    ),
+                    CheckedPopupMenuItem<int>(
+                      value: 10,
+                      checked: secretTtlSeconds == 10,
+                      child: const Text('10s'),
+                    ),
+                    CheckedPopupMenuItem<int>(
+                      value: 30,
+                      checked: secretTtlSeconds == 30,
+                      child: const Text('30s'),
+                    ),
+                    CheckedPopupMenuItem<int>(
+                      value: 60,
+                      checked: secretTtlSeconds == 60,
+                      child: const Text('1m'),
+                    ),
+                    CheckedPopupMenuItem<int>(
+                      value: 300,
+                      checked: secretTtlSeconds == 300,
+                      child: const Text('5m'),
+                    ),
+                  ],
+                  icon: Icon(
+                    Icons.timer_outlined,
+                    color: secretTtlSeconds == null
+                        ? iconColor
+                        : const Color(0xFFB58BFF),
+                    size: 22.sp,
                   ),
                 ),
                 Expanded(
@@ -907,7 +1214,7 @@ class _ComposerBar extends StatelessWidget {
                     onTap: onInputTap,
                     onSubmitted: (_) => onSend(),
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isDark ? Colors.white : scheme.onSurface,
                       fontSize: 16.5.sp,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'Roboto',
@@ -916,7 +1223,9 @@ class _ComposerBar extends StatelessWidget {
                     decoration: InputDecoration(
                       hintText: context.l10n.inputHint,
                       hintStyle: TextStyle(
-                        color: const Color(0xFF7E8DAF),
+                        color: isDark
+                            ? const Color(0xFF7E8DAF)
+                            : scheme.onSurfaceVariant,
                         fontSize: 14.5.sp,
                         fontWeight: FontWeight.w600,
                         fontFamily: 'Roboto',
@@ -941,16 +1250,26 @@ class _ComposerBar extends StatelessWidget {
                       ),
                     ),
                   )
-                else
+                else ...[
+                  IconButton(
+                    onPressed: onPickSticker,
+                    splashRadius: 20.r,
+                    icon: Icon(
+                      Icons.sticky_note_2_outlined,
+                      color: iconColor,
+                      size: 22.sp,
+                    ),
+                  ),
                   IconButton(
                     onPressed: onAttach,
                     splashRadius: 20.r,
                     icon: Icon(
                       Icons.attach_file_rounded,
-                      color: const Color(0xFF95A3C6),
+                      color: iconColor,
                       size: 22.sp,
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -961,7 +1280,9 @@ class _ComposerBar extends StatelessWidget {
           height: 52.w,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: showSend ? null : const Color(0xFF15284E),
+            color: showSend
+                ? null
+                : (isDark ? const Color(0xFF15284E) : scheme.surfaceContainer),
             gradient: showSend
                 ? const LinearGradient(
                     colors: [Color(0xFF6D4CFF), Color(0xFF9E5CFF)],
@@ -972,7 +1293,9 @@ class _ComposerBar extends StatelessWidget {
             border: Border.all(
               color: showSend
                   ? const Color(0xFFB490FF).withValues(alpha: 0.65)
-                  : Colors.white.withValues(alpha: 0.12),
+                  : (isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : scheme.outline),
             ),
           ),
           child: IconButton(
@@ -980,7 +1303,7 @@ class _ComposerBar extends StatelessWidget {
             splashRadius: 22.r,
             icon: Icon(
               showSend ? Icons.send_rounded : Icons.mic_none_rounded,
-              color: showSend ? Colors.white : const Color(0xFF95A3C6),
+              color: showSend ? Colors.white : iconColor,
               size: 22.sp,
             ),
           ),
@@ -1009,12 +1332,24 @@ class _MessagesList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (messages.isEmpty) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final visibleMessages = messages
+        .where((message) {
+          if (message.deletedForAll) return false;
+          final expireAt = message.expireAt;
+          if (expireAt == null) return true;
+          return expireAt.isAfter(now);
+        })
+        .toList(growable: false);
+
+    if (visibleMessages.isEmpty) {
       return Center(
         child: Text(
           context.l10n.noMessages,
           style: TextStyle(
-            color: Color(0xFF92A0BF),
+            color: isDark ? const Color(0xFF92A0BF) : scheme.onSurfaceVariant,
             fontSize: 14.sp,
             fontWeight: FontWeight.w600,
           ),
@@ -1035,7 +1370,7 @@ class _MessagesList extends StatelessWidget {
       child: ListView.builder(
         controller: controller,
         padding: EdgeInsets.fromLTRB(10.w, 2.h, 10.w, 9.h),
-        itemCount: messages.length + headerCount,
+        itemCount: visibleMessages.length + headerCount,
         itemBuilder: (context, index) {
           if (showTopLoader && index == 0) {
             return SizedBox(
@@ -1055,7 +1390,7 @@ class _MessagesList extends StatelessWidget {
             );
           }
 
-          final message = messages[index - headerCount];
+          final message = visibleMessages[index - headerCount];
           final isMine = message.senderId == currentUserId;
 
           return _MessageBubble(message: message, isMine: isMine);
@@ -1073,6 +1408,8 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     final localeTag = Localizations.localeOf(context).toLanguageTag();
     final timeText = DateFormat('HH:mm', localeTag).format(message.createdAt);
     final imageUrl = message.imageUrl?.trim();
@@ -1089,7 +1426,9 @@ class _MessageBubble extends StatelessWidget {
       ),
       padding: bubblePadding,
       decoration: BoxDecoration(
-        color: isMine ? null : const Color(0xFF182848),
+        color: isMine
+            ? null
+            : (isDark ? const Color(0xFF182848) : scheme.surface),
         gradient: isMine
             ? const LinearGradient(
                 colors: [Color(0xFF7A2FFF), Color(0xFFA610FF)],
@@ -1106,7 +1445,9 @@ class _MessageBubble extends StatelessWidget {
         border: Border.all(
           color: isMine
               ? const Color(0xFF9C62FF).withValues(alpha: 0.60)
-              : const Color(0xFF425980).withValues(alpha: 0.58),
+              : (isDark
+                    ? const Color(0xFF425980).withValues(alpha: 0.58)
+                    : scheme.outline.withValues(alpha: 0.55)),
         ),
       ),
       child: Column(
@@ -1123,11 +1464,15 @@ class _MessageBubble extends StatelessWidget {
                 errorBuilder: (_, __, ___) => Container(
                   width: MediaQuery.sizeOf(context).width * 0.68,
                   height: 130.h,
-                  color: const Color(0xFF1C2E51),
+                  color: isDark
+                      ? const Color(0xFF1C2E51)
+                      : scheme.surfaceContainerHighest,
                   alignment: Alignment.center,
                   child: Icon(
                     Icons.broken_image_outlined,
-                    color: const Color(0xFFA8B8DA),
+                    color: isDark
+                        ? const Color(0xFFA8B8DA)
+                        : scheme.onSurfaceVariant,
                     size: 24.sp,
                   ),
                 ),
@@ -1138,7 +1483,9 @@ class _MessageBubble extends StatelessWidget {
             Text(
               text,
               style: TextStyle(
-                color: Colors.white,
+                color: isMine
+                    ? Colors.white
+                    : (isDark ? Colors.white : scheme.onSurface),
                 fontSize: 17.sp,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'Roboto',
@@ -1155,13 +1502,13 @@ class _MessageBubble extends StatelessWidget {
         Text(
           timeText,
           style: TextStyle(
-            color: Color(0xFF8190B0),
+            color: isDark ? const Color(0xFF8190B0) : scheme.onSurfaceVariant,
             fontSize: 11.sp,
             fontWeight: FontWeight.w700,
           ),
         ),
         if (isMine) SizedBox(width: 3.w),
-        if (isMine) _buildStatusIcon(message.status),
+        if (isMine) _buildStatusIcon(message.status, isDark: isDark),
       ],
     );
 
@@ -1183,14 +1530,17 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIcon(MessageStatus status) {
+  Widget _buildStatusIcon(MessageStatus status, {required bool isDark}) {
+    final baseColor = isDark
+        ? const Color(0xFF8190B0)
+        : const Color(0xFF6E7C9D);
     switch (status) {
       case MessageStatus.sending:
-        return Icon(Icons.schedule, color: Color(0xFF8190B0), size: 14.sp);
+        return Icon(Icons.schedule, color: baseColor, size: 14.sp);
       case MessageStatus.sent:
-        return Icon(Icons.done, color: Color(0xFF8190B0), size: 14.sp);
+        return Icon(Icons.done, color: baseColor, size: 14.sp);
       case MessageStatus.delivered:
-        return Icon(Icons.done_all, color: Color(0xFF8190B0), size: 14.sp);
+        return Icon(Icons.done_all, color: baseColor, size: 14.sp);
       case MessageStatus.read:
         return Icon(Icons.done_all, color: Color(0xFFA87EFF), size: 14.sp);
     }
@@ -1261,6 +1611,8 @@ class _SmallAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageProvider = safeNetworkImage(imageUrl);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return SizedBox(
       width: size,
@@ -1275,7 +1627,9 @@ class _SmallAvatar extends StatelessWidget {
             ),
             child: CircleAvatar(
               radius: size / 2,
-              backgroundColor: const Color(0xFF1A2745),
+              backgroundColor: isDark
+                  ? const Color(0xFF1A2745)
+                  : scheme.surfaceContainerHighest,
               backgroundImage: imageProvider,
               child: imageProvider == null
                   ? Text(
@@ -1300,7 +1654,7 @@ class _SmallAvatar extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: dotColor ?? const Color(0xFF00D772),
                   border: Border.all(
-                    color: const Color(0xFF041233),
+                    color: isDark ? const Color(0xFF041233) : Colors.white,
                     width: 1.8.w,
                   ),
                 ),

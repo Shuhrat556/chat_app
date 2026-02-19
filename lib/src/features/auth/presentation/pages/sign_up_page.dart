@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:chat_app/src/features/auth/domain/validators/username_validator.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:chat_app/src/features/auth/presentation/widgets/auth_widgets.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
@@ -148,10 +149,18 @@ class _SignUpPageState extends State<SignUpPage> {
 
   String? _validateUsername(String? value, AppLocalizations t) {
     final text = value?.trim() ?? '';
-    if (text.isEmpty) return t.requiredUsername;
-    if (text.length < 3) return t.minUsername;
-    if (text.contains(' ')) return t.noSpaces;
-    return null;
+    final error = UsernameValidator.validate(text);
+    if (error == null) return null;
+    switch (error) {
+      case UsernameValidationError.empty:
+        return t.requiredUsername;
+      case UsernameValidationError.tooShort:
+        return t.usernameMin5;
+      case UsernameValidationError.tooLong:
+        return t.usernameMax20;
+      case UsernameValidationError.latinOnly:
+        return t.usernameLatinOnly;
+    }
   }
 
   String? _validateEmail(String? value, AppLocalizations t) {
@@ -239,6 +248,10 @@ class _SignUpPageState extends State<SignUpPage> {
           final raw = state.message;
           final message = switch (raw) {
             'password_mismatch' => t.passwordMismatch,
+            'required_username' => t.requiredUsername,
+            'username_min_5' => t.usernameMin5,
+            'username_max_20' => t.usernameMax20,
+            'username_latin_only' => t.usernameLatinOnly,
             _ => raw ?? t.error,
           };
           ScaffoldMessenger.of(

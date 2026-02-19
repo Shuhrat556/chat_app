@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
+import 'package:chat_app/src/features/auth/domain/validators/username_validator.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:chat_app/src/core/utils/image_utils.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
@@ -243,12 +244,23 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final t = context.l10n;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF010A1F), Color(0xFF03143A), Color(0xFF010A24)],
+            colors: isDark
+                ? const [
+                    Color(0xFF010A1F),
+                    Color(0xFF03143A),
+                    Color(0xFF010A24),
+                  ]
+                : const [
+                    Color(0xFFEAF2FF),
+                    Color(0xFFD9E8FF),
+                    Color(0xFFF5F9FF),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -283,7 +295,14 @@ class _ProfilePageState extends State<ProfilePage> {
               }
 
               if (state.status == AuthStatus.failure && state.message != null) {
-                messenger.showSnackBar(SnackBar(content: Text(state.message!)));
+                final message = switch (state.message) {
+                  'required_username' => t.requiredUsername,
+                  'username_min_5' => t.usernameMin5,
+                  'username_max_20' => t.usernameMax20,
+                  'username_latin_only' => t.usernameLatinOnly,
+                  _ => state.message!,
+                };
+                messenger.showSnackBar(SnackBar(content: Text(message)));
                 _profileSaveRequested = false;
                 _deleteRequested = false;
                 _signOutRequested = false;
@@ -400,16 +419,27 @@ class _ProfilePageState extends State<ProfilePage> {
                                             icon: Icons.alternate_email,
                                             validator: (value) {
                                               final text = value?.trim() ?? '';
-                                              if (text.isEmpty) {
-                                                return t.requiredUsername;
+                                              final error =
+                                                  UsernameValidator.validate(
+                                                    text,
+                                                  );
+                                              if (error == null) {
+                                                return null;
                                               }
-                                              if (text.length < 3) {
-                                                return t.minUsername;
+                                              switch (error) {
+                                                case UsernameValidationError
+                                                    .empty:
+                                                  return t.requiredUsername;
+                                                case UsernameValidationError
+                                                    .tooShort:
+                                                  return t.usernameMin5;
+                                                case UsernameValidationError
+                                                    .tooLong:
+                                                  return t.usernameMax20;
+                                                case UsernameValidationError
+                                                    .latinOnly:
+                                                  return t.usernameLatinOnly;
                                               }
-                                              if (text.contains(' ')) {
-                                                return t.noSpaces;
-                                              }
-                                              return null;
                                             },
                                           ),
                                           SizedBox(height: 8.h),
@@ -436,38 +466,80 @@ class _ProfilePageState extends State<ProfilePage> {
                                     _ProfileSectionCard(
                                       child: SizedBox(
                                         width: double.infinity,
-                                        child: OutlinedButton.icon(
-                                          onPressed: isBusy
-                                              ? null
-                                              : _goToChangePassword,
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: const Color(
-                                              0xFFDAE4FF,
-                                            ),
-                                            side: BorderSide(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.22,
+                                        child: Column(
+                                          children: [
+                                            OutlinedButton.icon(
+                                              onPressed: isBusy
+                                                  ? null
+                                                  : _goToChangePassword,
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: const Color(
+                                                  0xFFDAE4FF,
+                                                ),
+                                                side: BorderSide(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.22),
+                                                ),
+                                                padding: EdgeInsets.symmetric(
+                                                  vertical: 11.h,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        12.r,
+                                                      ),
+                                                ),
+                                              ),
+                                              icon: Icon(
+                                                Icons.lock_reset_rounded,
+                                                size: 18.sp,
+                                              ),
+                                              label: Text(
+                                                _changePasswordLabel(),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 13.sp,
+                                                ),
                                               ),
                                             ),
-                                            padding: EdgeInsets.symmetric(
-                                              vertical: 11.h,
+                                            SizedBox(height: 8.h),
+                                            OutlinedButton.icon(
+                                              onPressed: isBusy
+                                                  ? null
+                                                  : () => context.push(
+                                                      '/settings',
+                                                    ),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: const Color(
+                                                  0xFFDAE4FF,
+                                                ),
+                                                side: BorderSide(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.22),
+                                                ),
+                                                padding: EdgeInsets.symmetric(
+                                                  vertical: 11.h,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        12.r,
+                                                      ),
+                                                ),
+                                              ),
+                                              icon: Icon(
+                                                Icons.settings_outlined,
+                                                size: 18.sp,
+                                              ),
+                                              label: Text(
+                                                t.settingsTitle,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 13.sp,
+                                                ),
+                                              ),
                                             ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12.r),
-                                            ),
-                                          ),
-                                          icon: Icon(
-                                            Icons.lock_reset_rounded,
-                                            size: 18.sp,
-                                          ),
-                                          label: Text(
-                                            _changePasswordLabel(),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13.sp,
-                                            ),
-                                          ),
+                                          ],
                                         ),
                                       ),
                                     ),

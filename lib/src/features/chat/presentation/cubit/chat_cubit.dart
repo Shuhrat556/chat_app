@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:chat_app/src/features/auth/data/datasources/presence_remote_data_source.dart';
 import 'package:chat_app/src/features/auth/domain/entities/app_user.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:chat_app/src/features/chat/domain/usecases/load_older_messages_usecase.dart';
@@ -19,11 +20,13 @@ class ChatCubit extends Cubit<ChatState> {
     required MarkConversationReadUseCase markConversationReadUseCase,
     required SendMessageUseCase sendMessageUseCase,
     required FirebaseAuth firebaseAuth,
+    required PresenceRemoteDataSource presenceRemoteDataSource,
   }) : _watchMessagesUseCase = watchMessagesUseCase,
        _loadOlderMessagesUseCase = loadOlderMessagesUseCase,
        _markConversationReadUseCase = markConversationReadUseCase,
        _sendMessageUseCase = sendMessageUseCase,
        _firebaseAuth = firebaseAuth,
+       _presenceRemoteDataSource = presenceRemoteDataSource,
        super(const ChatState());
 
   static const _pageSize = 40;
@@ -33,22 +36,29 @@ class ChatCubit extends Cubit<ChatState> {
   final MarkConversationReadUseCase _markConversationReadUseCase;
   final SendMessageUseCase _sendMessageUseCase;
   final FirebaseAuth _firebaseAuth;
+  final PresenceRemoteDataSource _presenceRemoteDataSource;
 
   StreamSubscription<List<ChatMessage>>? _sub;
+  StreamSubscription<Set<String>>? _typingUsersSub;
   List<ChatMessage> _olderMessages = const [];
   bool _hasMore = true;
   bool _isLoadingMore = false;
   String? _lastHandledIncomingId;
   Timer? _typingTimer;
-  bool _isTyping = false;
+  bool _isCurrentUserTyping = false;
+  String? _typingConversationId;
 
   void start(AppUser peer) {
     final currentUserId = _firebaseAuth.currentUser?.uid;
+    unawaited(_stopTypingRemote());
+    _typingConversationId = null;
+    _typingUsersSub?.cancel();
+    _typingUsersSub = null;
     _olderMessages = const [];
     _hasMore = true;
     _isLoadingMore = false;
     _lastHandledIncomingId = null;
-    _isTyping = false;
+    _isCurrentUserTyping = false;
     emit(
       state.copyWith(
         peer: peer,
@@ -60,6 +70,17 @@ class ChatCubit extends Cubit<ChatState> {
         isTyping: false,
       ),
     );
+    if (currentUserId != null) {
+      _typingConversationId = _canonicalConversationId(currentUserId, peer.id);
+      _typingUsersSub = _presenceRemoteDataSource
+          .watchTypingUsers(_typingConversationId!)
+          .listen((typingUsers) {
+            final peerTyping = typingUsers.contains(peer.id);
+            if (state.isTyping != peerTyping) {
+              emit(state.copyWith(isTyping: peerTyping));
+            }
+          }, onError: (_, __) {});
+    }
     unawaited(_markConversationReadUseCase(peerId: peer.id));
     _sub?.cancel();
     _sub = _watchMessagesUseCase(peerId: peer.id, limit: _pageSize).listen(
@@ -78,7 +99,7 @@ class ChatCubit extends Cubit<ChatState> {
             error: null,
             hasMore: _hasMore,
             isLoadingMore: _isLoadingMore,
-            isTyping: _isTyping,
+            isTyping: state.isTyping,
           ),
         );
 
@@ -100,25 +121,20 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   void onTypingStarted() {
-    _isTyping = true;
+    final conversationId = _typingConversationId;
+    if (conversationId == null) return;
+    if (!_isCurrentUserTyping) {
+      _isCurrentUserTyping = true;
+      unawaited(_presenceRemoteDataSource.setTyping(conversationId, true));
+    }
     _typingTimer?.cancel();
     _typingTimer = Timer(const Duration(seconds: 3), () {
-      _isTyping = false;
-      _emitTypingState();
+      unawaited(_stopTypingRemote());
     });
-    _emitTypingState();
   }
 
   void onTypingStopped() {
-    _isTyping = false;
-    _typingTimer?.cancel();
-    _emitTypingState();
-  }
-
-  void _emitTypingState() {
-    if (state.peer != null) {
-      emit(state.copyWith(isTyping: _isTyping));
-    }
+    unawaited(_stopTypingRemote());
   }
 
   Future<void> loadOlder() async {
@@ -159,7 +175,7 @@ class ChatCubit extends Cubit<ChatState> {
           error: null,
           hasMore: _hasMore,
           isLoadingMore: false,
-          isTyping: _isTyping,
+          isTyping: state.isTyping,
         ),
       );
     } catch (error) {
@@ -175,19 +191,24 @@ class ChatCubit extends Cubit<ChatState> {
     }
   }
 
-  Future<void> send(String text) {
+  Future<void> send(String text, {int? ttlSeconds}) {
     final peerId = state.peer?.id;
     if (peerId == null) return Future.value();
-    return _sendMessageUseCase(peerId: peerId, text: text);
+    return _sendMessageUseCase(
+      peerId: peerId,
+      text: text,
+      ttlSeconds: ttlSeconds,
+    );
   }
 
-  Future<void> sendImage(String imageUrl, {String? caption}) {
+  Future<void> sendImage(String imageUrl, {String? caption, int? ttlSeconds}) {
     final peerId = state.peer?.id;
     if (peerId == null) return Future.value();
     return _sendMessageUseCase(
       peerId: peerId,
       text: caption ?? '',
       imageUrl: imageUrl,
+      ttlSeconds: ttlSeconds,
     );
   }
 
@@ -212,9 +233,28 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   @override
-  Future<void> close() {
-    _sub?.cancel();
-    _typingTimer?.cancel();
+  Future<void> close() async {
+    await _sub?.cancel();
+    await _typingUsersSub?.cancel();
+    await _stopTypingRemote();
     return super.close();
+  }
+
+  Future<void> _stopTypingRemote() async {
+    _typingTimer?.cancel();
+    if (!_isCurrentUserTyping) return;
+    _isCurrentUserTyping = false;
+    final conversationId = _typingConversationId;
+    if (conversationId == null) return;
+    try {
+      await _presenceRemoteDataSource.setTyping(conversationId, false);
+    } catch (_) {
+      // Typing indicator failure must not break chat flow.
+    }
+  }
+
+  String _canonicalConversationId(String a, String b) {
+    final sorted = [a, b]..sort();
+    return '${sorted.first}_${sorted.last}';
   }
 }

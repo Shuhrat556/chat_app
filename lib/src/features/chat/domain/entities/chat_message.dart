@@ -14,6 +14,9 @@ class ChatMessage extends Equatable {
     this.status = MessageStatus.sent,
     this.deliveredAt,
     this.readAt,
+    this.ttlSeconds,
+    this.expireAt,
+    this.deletedForAll = false,
   });
 
   final String id;
@@ -26,6 +29,9 @@ class ChatMessage extends Equatable {
   final MessageStatus status;
   final DateTime? deliveredAt;
   final DateTime? readAt;
+  final int? ttlSeconds;
+  final DateTime? expireAt;
+  final bool deletedForAll;
 
   ChatMessage copyWith({
     String? id,
@@ -38,6 +44,9 @@ class ChatMessage extends Equatable {
     MessageStatus? status,
     DateTime? deliveredAt,
     DateTime? readAt,
+    int? ttlSeconds,
+    DateTime? expireAt,
+    bool? deletedForAll,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -50,6 +59,9 @@ class ChatMessage extends Equatable {
       status: status ?? this.status,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       readAt: readAt ?? this.readAt,
+      ttlSeconds: ttlSeconds ?? this.ttlSeconds,
+      expireAt: expireAt ?? this.expireAt,
+      deletedForAll: deletedForAll ?? this.deletedForAll,
     );
   }
 
@@ -65,5 +77,8 @@ class ChatMessage extends Equatable {
     status,
     deliveredAt,
     readAt,
+    ttlSeconds,
+    expireAt,
+    deletedForAll,
   ];
 }

@@ -6,6 +6,7 @@ import 'package:chat_app/src/features/chat/data/models/chat_message_model.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_conversation_preview.dart';
 import 'package:chat_app/src/features/chat/domain/entities/chat_message.dart';
 import 'package:chat_app/src/features/chat/domain/repositories/chat_repository.dart';
+import 'package:chat_app/src/features/settings/domain/settings_repository.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,13 +15,16 @@ class ChatRepositoryImpl implements ChatRepository {
     required ChatLocalDataSource localDataSource,
     required ChatRemoteDataSource dataSource,
     required FirebaseAuth firebaseAuth,
+    required SettingsRepository settingsRepository,
   }) : _localDataSource = localDataSource,
        _dataSource = dataSource,
-       _firebaseAuth = firebaseAuth;
+       _firebaseAuth = firebaseAuth,
+       _settingsRepository = settingsRepository;
 
   final ChatLocalDataSource _localDataSource;
   final ChatRemoteDataSource _dataSource;
   final FirebaseAuth _firebaseAuth;
+  final SettingsRepository _settingsRepository;
   final _uuid = const Uuid();
 
   @override
@@ -80,6 +84,20 @@ class ChatRepositoryImpl implements ChatRepository {
                 );
                 emitCombined();
                 unawaited(_localDataSource.cacheMessages(messages));
+                final hasIncomingPendingDelivery = messages.any(
+                  (message) =>
+                      message.receiverId == currentUser.uid &&
+                      (message.status == MessageStatus.sent ||
+                          message.status == MessageStatus.sending),
+                );
+                if (hasIncomingPendingDelivery) {
+                  unawaited(
+                    _markIncomingAsDeliveredSafely(
+                      conversationId: conversationId,
+                      currentUserId: currentUser.uid,
+                    ),
+                  );
+                }
               },
               onError: (_, __) {
                 // Keep local stream alive for offline usage.
@@ -179,6 +197,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String peerId,
     required String text,
     String? imageUrl,
+    int? ttlSeconds,
   }) async {
     final trimmed = text.trim();
     final cleanedImageUrl = imageUrl?.trim();
@@ -200,6 +219,9 @@ class ChatRepositoryImpl implements ChatRepository {
     final conversationIds = _conversationIds(currentUser.uid, peerId);
     final messageId = _uuid.v4();
     final createdAt = DateTime.now();
+    final expireAt = ttlSeconds == null
+        ? null
+        : createdAt.add(Duration(seconds: ttlSeconds));
 
     final canonicalMessage = ChatMessageModel(
       id: messageId,
@@ -209,6 +231,9 @@ class ChatRepositoryImpl implements ChatRepository {
       text: trimmed,
       imageUrl: hasImage ? cleanedImageUrl : null,
       createdAt: createdAt,
+      ttlSeconds: ttlSeconds,
+      expireAt: expireAt,
+      deletedForAll: false,
     );
 
     await _localDataSource.cacheMessage(canonicalMessage);
@@ -224,6 +249,9 @@ class ChatRepositoryImpl implements ChatRepository {
           text: trimmed,
           imageUrl: hasImage ? cleanedImageUrl : null,
           createdAt: createdAt,
+          ttlSeconds: ttlSeconds,
+          expireAt: expireAt,
+          deletedForAll: false,
         ),
       ),
     );
@@ -235,14 +263,77 @@ class ChatRepositoryImpl implements ChatRepository {
     final currentUser = _firebaseAuth.currentUser;
     if (currentUser == null) return;
 
-    final conversationIds = _conversationIds(currentUser.uid, peerId);
-    final tasks = conversationIds.map(
-      (conversationId) => _dataSource.markConversationRead(
-        conversationId: conversationId,
+    var readReceiptsEnabled = true;
+    try {
+      final settings = await _settingsRepository.getSettings(
         userId: currentUser.uid,
-      ),
-    );
+      );
+      readReceiptsEnabled = settings.readReceipts;
+    } catch (_) {
+      readReceiptsEnabled = true;
+    }
+
+    final conversationIds = _conversationIds(currentUser.uid, peerId);
+    final tasks = conversationIds.map((conversationId) async {
+      final futures = <Future<void>>[
+        _markConversationReadSafely(
+          conversationId: conversationId,
+          currentUserId: currentUser.uid,
+        ),
+      ];
+      if (readReceiptsEnabled) {
+        futures.add(
+          _markMessagesReadSafely(
+            conversationId: conversationId,
+            currentUserId: currentUser.uid,
+          ),
+        );
+      }
+      await Future.wait(futures);
+    });
     await Future.wait(tasks);
+  }
+
+  Future<void> _markIncomingAsDeliveredSafely({
+    required String conversationId,
+    required String currentUserId,
+  }) async {
+    try {
+      await _dataSource.markMessagesAsDelivered(
+        conversationId: conversationId,
+        receiverId: currentUserId,
+      );
+    } catch (_) {
+      // Presence/network hiccups should not break message stream.
+    }
+  }
+
+  Future<void> _markMessagesReadSafely({
+    required String conversationId,
+    required String currentUserId,
+  }) async {
+    try {
+      await _dataSource.markMessagesAsRead(
+        conversationId: conversationId,
+        receiverId: currentUserId,
+      );
+    } catch (_) {
+      // Keep chat usable if read-status write fails.
+    }
+  }
+
+  Future<void> _markConversationReadSafely({
+    required String conversationId,
+    required String currentUserId,
+  }) async {
+    try {
+      await _dataSource.markConversationRead(
+        conversationId: conversationId,
+        userId: currentUserId,
+      );
+    } catch (_) {
+      // Keep chat usable if unread-counter write fails.
+    }
   }
 
   String _canonicalConversationId(String a, String b) {
@@ -269,6 +360,7 @@ class ChatRepositoryImpl implements ChatRepository {
     }
 
     final merged = byId.values.toList(growable: false)
+      ..removeWhere((message) => _isExpiredOrDeleted(message))
       ..sort((a, b) {
         final byTime = a.createdAt.compareTo(b.createdAt);
         if (byTime != 0) return byTime;
@@ -279,5 +371,12 @@ class ChatRepositoryImpl implements ChatRepository {
       return merged;
     }
     return merged.sublist(merged.length - limit);
+  }
+
+  bool _isExpiredOrDeleted(ChatMessage message) {
+    if (message.deletedForAll) return true;
+    final expireAt = message.expireAt;
+    if (expireAt == null) return false;
+    return expireAt.isBefore(DateTime.now());
   }
 }

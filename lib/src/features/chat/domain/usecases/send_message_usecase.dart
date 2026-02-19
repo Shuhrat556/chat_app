@@ -9,11 +9,13 @@ class SendMessageUseCase {
     required String peerId,
     required String text,
     String? imageUrl,
+    int? ttlSeconds,
   }) {
     return _repository.sendMessage(
       peerId: peerId,
       text: text,
       imageUrl: imageUrl,
+      ttlSeconds: ttlSeconds,
     );
   }
 }

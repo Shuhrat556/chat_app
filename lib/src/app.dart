@@ -1,6 +1,13 @@
+import 'dart:async';
+
 import 'package:chat_app/src/core/di/service_locator.dart';
+import 'package:chat_app/src/core/presence/presence_lifecycle_service.dart';
 import 'package:chat_app/src/core/router/app_router.dart';
+import 'package:chat_app/src/core/theme/app_theme.dart';
+import 'package:chat_app/src/core/theme/theme_cubit.dart';
+import 'package:chat_app/src/core/theme/theme_state.dart';
 import 'package:chat_app/src/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:chat_app/src/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:chat_app/src/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,17 +24,27 @@ class App extends StatefulWidget {
 
 class _AppState extends State<App> {
   late final AuthBloc _authBloc;
+  late final SettingsCubit _settingsCubit;
+  late final ThemeCubit _themeCubit;
+  late final PresenceLifecycleService _presenceLifecycleService;
   late final AppRouter _appRouter;
 
   @override
   void initState() {
     super.initState();
     _authBloc = sl<AuthBloc>()..add(const AuthStarted());
+    _settingsCubit = sl<SettingsCubit>()..start();
+    _themeCubit = sl<ThemeCubit>()..start();
+    _presenceLifecycleService = sl<PresenceLifecycleService>();
+    unawaited(_presenceLifecycleService.start());
     _appRouter = AppRouter(_authBloc);
   }
 
   @override
   void dispose() {
+    unawaited(_presenceLifecycleService.dispose());
+    _themeCubit.close();
+    _settingsCubit.close();
     _authBloc.close();
     super.dispose();
   }
@@ -39,69 +56,54 @@ class _AppState extends State<App> {
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) => MultiBlocProvider(
-        providers: [BlocProvider<AuthBloc>.value(value: _authBloc)],
-        child: AnnotatedRegion<SystemUiOverlayStyle>(
-          value: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            statusBarBrightness: Brightness.dark,
-            systemNavigationBarColor: Color(0xFF010A1F),
-            systemNavigationBarIconBrightness: Brightness.light,
-          ),
-          child: MaterialApp.router(
-            title: 'Chat App',
-            debugShowCheckedModeBanner: false,
-            supportedLocales: AppLocalizations.supportedLocales,
-            localizationsDelegates: const [
-              AppLocalizationsDelegate(),
-              GlobalMaterialLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-            ],
-            localeResolutionCallback: (locale, supportedLocales) {
-              if (locale == null) return const Locale('ru');
-              final match = supportedLocales
-                  .where((l) => l.languageCode == locale.languageCode)
-                  .toList();
-              return match.isNotEmpty ? match.first : const Locale('ru');
-            },
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-              scaffoldBackgroundColor: Colors.transparent,
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                centerTitle: true,
-                systemOverlayStyle: SystemUiOverlayStyle(
-                  statusBarColor: Colors.transparent,
-                  statusBarIconBrightness: Brightness.light,
-                  statusBarBrightness: Brightness.dark,
-                ),
+        providers: [
+          BlocProvider<AuthBloc>.value(value: _authBloc),
+          BlocProvider<SettingsCubit>.value(value: _settingsCubit),
+          BlocProvider<ThemeCubit>.value(value: _themeCubit),
+        ],
+        child: BlocBuilder<ThemeCubit, ThemeState>(
+          builder: (context, themeState) {
+            final isDark = themeState.themeMode == ThemeMode.dark;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: isDark
+                    ? Brightness.light
+                    : Brightness.dark,
+                statusBarBrightness: isDark
+                    ? Brightness.dark
+                    : Brightness.light,
+                systemNavigationBarColor: isDark
+                    ? const Color(0xFF010A1F)
+                    : const Color(0xFFF3F6FF),
+                systemNavigationBarIconBrightness: isDark
+                    ? Brightness.light
+                    : Brightness.dark,
               ),
-              elevatedButtonTheme: ElevatedButtonThemeData(
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(
-                    vertical: 13.h,
-                    horizontal: 16.w,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                ),
+              child: MaterialApp.router(
+                title: 'Chat App',
+                debugShowCheckedModeBanner: false,
+                supportedLocales: AppLocalizations.supportedLocales,
+                localizationsDelegates: const [
+                  AppLocalizationsDelegate(),
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                ],
+                localeResolutionCallback: (locale, supportedLocales) {
+                  if (locale == null) return const Locale('ru');
+                  final match = supportedLocales
+                      .where((l) => l.languageCode == locale.languageCode)
+                      .toList();
+                  return match.isNotEmpty ? match.first : const Locale('ru');
+                },
+                theme: AppTheme.light(),
+                darkTheme: AppTheme.dark(),
+                themeMode: themeState.themeMode,
+                routerConfig: _appRouter.router,
               ),
-              inputDecorationTheme: InputDecorationTheme(
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.9),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              useMaterial3: true,
-            ),
-            routerConfig: _appRouter.router,
-          ),
+            );
+          },
         ),
       ),
     );
